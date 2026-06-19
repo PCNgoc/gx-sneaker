@@ -249,4 +249,47 @@ public class AuthService {
 
         return "Đặt lại mật khẩu thành công";
     }
+
+    public AdminLoginResponse adminLogin(AdminLoginRequest request) {
+
+        Optional<NhanVien> nv =
+                nhanVienRepository.findByEmail(request.getUsername());
+
+        if (nv.isEmpty()) {
+            nv = nhanVienRepository.findBySoDienThoai(
+                    request.getUsername()
+            );
+        }
+
+        if (nv.isEmpty()) {
+            throw new RuntimeException("Tài khoản không tồn tại");
+        }
+
+        if (!passwordEncoder.matches(
+                request.getPassword(),
+                nv.get().getMatKhau()
+        )) {
+
+            throw new RuntimeException("Sai mật khẩu");
+        }
+
+        String role =
+                nv.get().getPhanQuyen().getMaQuyen();
+
+        String token =
+                jwtService.generateToken(
+                        nv.get().getEmail(),
+                        role
+                );
+
+        return new AdminLoginResponse(
+                nv.get().getId(),
+                nv.get().getMaNhanVien(),
+                nv.get().getHoTen(),
+                nv.get().getEmail(),
+                role,
+                token,
+                "Đăng nhập thành công"
+        );
+    }
 }

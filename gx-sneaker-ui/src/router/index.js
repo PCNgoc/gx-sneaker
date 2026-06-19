@@ -7,7 +7,9 @@ import ProfileView from '@/views/ProfileView.vue'
 import ForgotPasswordView from '@/views/ForgotPasswordView.vue'
 import ResetPasswordView from '@/views/ResetPasswordView.vue'
 import ChangePasswordView from '@/views/ChangePasswordView.vue'
-
+import AdminLoginView from '@/views/admin/AdminLoginView.vue'
+import AdminDashboardView from '@/views/admin/AdminDashboardView.vue'
+import StaffDashboardView from '@/views/admin/StaffDashboardView.vue'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -58,38 +60,52 @@ const router = createRouter({
       name: 'staff',
       component: HomeView,
     },
+    {
+      path: '/admin/login',
+      component: AdminLoginView,
+    },
+
+    {
+      path: '/admin/dashboard',
+      component: AdminDashboardView,
+    },
+    {
+      path: '/staff',
+      component: StaffDashboardView,
+    },
   ],
 })
 
-router.beforeEach((to, from, next) => {
-  const user = JSON.parse(localStorage.getItem('user'))
+router.beforeEach((to) => {
   const token = localStorage.getItem('token')
 
-  // Chưa login
+  const adminToken = localStorage.getItem('adminToken')
+
+  const adminRole = localStorage.getItem('adminRole')
+
+  // CUSTOMER
+
   const protectedRoutes = ['/profile', '/change-password', '/cart', '/checkout']
 
   if (protectedRoutes.includes(to.path) && !token) {
-    next('/login')
-    return
+    return '/login'
   }
 
-  // Admin
-  if (to.path.startsWith('/admin')) {
-    if (!user || user.role !== 'ADMIN') {
-      next('/')
-      return
+  // ADMIN
+
+  if (to.path.startsWith('/admin') && to.path !== '/admin/login') {
+    if (!adminToken || adminRole !== 'ADMIN') {
+      return '/admin/login'
     }
   }
 
-  // Staff
+  // STAFF
+
   if (to.path.startsWith('/staff')) {
-    if (!user || (user.role !== 'ADMIN' && user.role !== 'STAFF')) {
-      next('/')
-      return
+    if (!adminToken || (adminRole !== 'ADMIN' && adminRole !== 'STAFF')) {
+      return '/admin/login'
     }
   }
-
-  next()
 })
 
 export default router

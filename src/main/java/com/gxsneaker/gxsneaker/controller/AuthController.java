@@ -1,14 +1,10 @@
 package com.gxsneaker.gxsneaker.controller;
 
-import com.gxsneaker.gxsneaker.dto.LoginRequest;
+import com.gxsneaker.gxsneaker.dto.*;
 import com.gxsneaker.gxsneaker.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import com.gxsneaker.gxsneaker.dto.RegisterRequest;
-import com.gxsneaker.gxsneaker.dto.ChangePasswordRequest;
-import com.gxsneaker.gxsneaker.dto.ForgotPasswordRequest;
-import com.gxsneaker.gxsneaker.dto.ResetPasswordRequest;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -103,5 +99,15 @@ public class AuthController {
             error.put("message", e.getMessage());
             return ResponseEntity.badRequest().body(error);
         }
+    }
+
+    @PostMapping("/admin/login")
+    public ResponseEntity<?> adminLogin(
+            @RequestBody AdminLoginRequest request
+    ) {
+
+        return ResponseEntity.ok(
+                authService.adminLogin(request)
+        );
     }
 }
