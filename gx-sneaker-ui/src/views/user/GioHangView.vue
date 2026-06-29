@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from "vue"
 import { useRouter } from "vue-router"
 import { getCartByKhachHangId, updateItemQuantity, removeItemFromCart, clearCart } from "@/services/gioHangService"
-import { getByMa } from "@/services/phieuGiamGiaService"
+import { getByMa, getAll } from "@/services/phieuGiamGiaService"
 import { getMeApi } from "@/api/authApi"
 import { useCart } from "@/composables/useCart"
 
@@ -17,6 +17,30 @@ const voucherCode = ref("")
 const appliedVoucher = ref(null)
 const voucherError = ref("")
 const voucherSuccess = ref("")
+const availableVouchers = ref([])
+
+const formatMoneyCompact = (value) => {
+  if (!value) return "0"
+  if (value >= 1000000) {
+    return (value / 1000000).toFixed(0) + "M"
+  }
+  if (value >= 1000) {
+    return (value / 1000).toFixed(0) + "K"
+  }
+  return value
+}
+
+const selectVoucher = (code) => {
+  voucherCode.value = code
+  applyVoucher()
+}
+
+const removeVoucher = () => {
+  appliedVoucher.value = null
+  voucherCode.value = ""
+  voucherSuccess.value = ""
+  voucherError.value = ""
+}
 
 const formatMoney = (value) => {
   if (!value) return "0 đ"
@@ -35,6 +59,22 @@ const loadCartData = async () => {
       const cartRes = await getCartByKhachHangId(user.value.id)
       cart.value = cartRes.data
       await fetchCartCount(user.value.id)
+    }
+    
+    // Load vouchers list
+    try {
+      const voucherRes = await getAll()
+      const now = new Date()
+      // Filter active vouchers (trangThai === true) and those that still have quantity (soLuong > 0 or soLuong is null)
+      availableVouchers.value = (voucherRes.data || []).filter(v => {
+        const isStatusActive = v.trangThai === true
+        const hasQty = v.soLuong === null || v.soLuong > 0
+        const isStarted = !v.ngayBatDau || new Date(v.ngayBatDau) <= now
+        const isNotExpired = !v.ngayKetThuc || new Date(v.ngayKetThuc) >= now
+        return isStatusActive && hasQty && isStarted && isNotExpired
+      })
+    } catch (vErr) {
+      console.error("Lỗi khi tải danh sách voucher:", vErr)
     }
   } catch (err) {
     console.error("Lỗi khi tải giỏ hàng:", err)
@@ -252,6 +292,67 @@ const checkout = () => {
             </div>
             <p v-if="voucherError" class="voucher-error">{{ voucherError }}</p>
             <p v-if="voucherSuccess" class="voucher-success">{{ voucherSuccess }}</p>
+
+            <!-- Suggested Vouchers list below input -->
+            <div v-if="availableVouchers.length > 0" class="suggested-vouchers-container">
+              <h4 class="suggested-title">Mã giảm giá dành cho bạn:</h4>
+              <div class="vouchers-list-scroll">
+                <div 
+                  v-for="v in availableVouchers" 
+                  :key="v.id" 
+                  class="voucher-suggest-card"
+                  :class="{ 
+                    'eligible': subtotal >= v.giaTriDonHangToiThieu, 
+                    'applied': appliedVoucher?.id === v.id 
+                  }"
+                >
+                  <!-- Left ticket-like edge -->
+                  <div class="voucher-card-left">
+                    <span class="voucher-percent">
+                      {{ v.loaiGiamGia ? `${v.giaTriGiam}%` : formatMoneyCompact(v.giaTriGiam) }}
+                    </span>
+                    <span class="voucher-off-lbl">GIẢM</span>
+                  </div>
+                  
+                  <!-- Dotted divider -->
+                  <div class="voucher-card-divider"></div>
+                  
+                  <!-- Right main content -->
+                  <div class="voucher-card-right">
+                    <div class="voucher-header-info">
+                      <span class="voucher-code-badge">{{ v.maPhieu }}</span>
+                      <span v-if="appliedVoucher?.id === v.id" class="applied-badge">Đang áp dụng</span>
+                    </div>
+                    <p class="voucher-desc" :title="v.tenPhieu">{{ v.tenPhieu }}</p>
+                    <p class="voucher-min-spend">Đơn tối thiểu: {{ formatMoney(v.giaTriDonHangToiThieu) }}</p>
+                    
+                    <!-- Progress bar if not eligible yet -->
+                    <div v-if="subtotal < v.giaTriDonHangToiThieu" class="spend-progress-bar">
+                      <div class="spend-progress-fill" :style="{ width: `${Math.min(100, (subtotal / v.giaTriDonHangToiThieu) * 100)}%` }"></div>
+                      <span class="spend-progress-text">Mua thêm {{ formatMoney(v.giaTriDonHangToiThieu - subtotal) }} để dùng</span>
+                    </div>
+
+                    <div class="voucher-actions">
+                      <button 
+                        v-if="subtotal >= v.giaTriDonHangToiThieu && appliedVoucher?.id !== v.id" 
+                        class="btn-apply-voucher" 
+                        @click="selectVoucher(v.maPhieu)"
+                      >
+                        Áp dụng
+                      </button>
+                      <button 
+                        v-else-if="appliedVoucher?.id === v.id" 
+                        class="btn-remove-applied-voucher" 
+                        @click="removeVoucher"
+                      >
+                        Hủy
+                      </button>
+                      <span v-else class="locked-voucher-lbl">Chưa đủ đ/k</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div v-if="appliedVoucher" class="price-row voucher-applied-row">
@@ -621,5 +722,260 @@ const checkout = () => {
   .cart-wrapper {
     grid-template-columns: 1fr;
   }
+}
+
+/* Suggested Vouchers Styling */
+.suggested-vouchers-container {
+  margin-top: 15px;
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 15px;
+}
+
+.suggested-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+  margin-bottom: 12px;
+}
+
+.vouchers-list-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 250px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Custom Scrollbar */
+.vouchers-list-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+.vouchers-list-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+.vouchers-list-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.voucher-suggest-card {
+  display: flex;
+  background: #ffffff;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.voucher-suggest-card::before,
+.voucher-suggest-card::after {
+  content: "";
+  position: absolute;
+  left: 24%;
+  width: 10px;
+  height: 10px;
+  background: #f8fafc; /* Match container bg */
+  border-radius: 50%;
+  z-index: 2;
+}
+.voucher-suggest-card::before {
+  top: -5px;
+  box-shadow: inset 0 -1px 1px rgba(0,0,0,0.05);
+}
+.voucher-suggest-card::after {
+  bottom: -5px;
+  box-shadow: inset 0 1px 1px rgba(0,0,0,0.05);
+}
+
+.voucher-suggest-card.applied {
+  border-color: #10b981;
+  background: #f0fdf4;
+}
+
+.voucher-suggest-card.applied::before,
+.voucher-suggest-card.applied::after {
+  background: #f8fafc;
+}
+
+.voucher-card-left {
+  width: 25%;
+  background: #cbd5e1;
+  color: #64748b;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  font-weight: 800;
+  padding: 10px;
+  min-height: 80px;
+  transition: all 0.3s ease;
+}
+
+.voucher-suggest-card.eligible .voucher-card-left {
+  background: linear-gradient(135deg, #ef4444, #f43f5e);
+  color: white;
+}
+
+.voucher-suggest-card.applied .voucher-card-left {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+}
+
+.voucher-percent {
+  font-size: 16px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.voucher-off-lbl {
+  font-size: 9px;
+  opacity: 0.8;
+  letter-spacing: 1px;
+  margin-top: 2px;
+}
+
+.voucher-card-divider {
+  border-left: 2px dashed #e2e8f0;
+  margin: 0;
+  background: transparent;
+  z-index: 1;
+}
+
+.voucher-suggest-card.applied .voucher-card-divider {
+  border-left-color: #a7f3d0;
+}
+
+.voucher-card-right {
+  flex: 1;
+  padding: 10px 12px 10px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.voucher-header-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.voucher-code-badge {
+  background: #f1f5f9;
+  color: #334155;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-weight: 700;
+  font-size: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.voucher-suggest-card.applied .voucher-code-badge {
+  background: #d1fae5;
+  color: #065f46;
+  border-color: #a7f3d0;
+}
+
+.applied-badge {
+  background: #10b981;
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 20px;
+}
+
+.voucher-desc {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 3px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.voucher-min-spend {
+  font-size: 11px;
+  color: #64748b;
+  margin: 2px 0 6px 0;
+}
+
+.spend-progress-bar {
+  background: #e2e8f0;
+  height: 4px;
+  border-radius: 2px;
+  position: relative;
+  margin: 4px 0 8px 0;
+}
+
+.spend-progress-fill {
+  background: #f43f5e;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.spend-progress-text {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  font-size: 9px;
+  color: #ef4444;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.voucher-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.btn-apply-voucher {
+  background: #1e293b;
+  color: white;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-apply-voucher:hover {
+  background: #ef4444;
+  transform: scale(1.05);
+}
+
+.btn-remove-applied-voucher {
+  background: #fee2e2;
+  color: #ef4444;
+  border: 1px solid #fca5a5;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-remove-applied-voucher:hover {
+  background: #ef4444;
+  color: white;
+  border-color: #ef4444;
+}
+
+.locked-voucher-lbl {
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 600;
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 </style>
