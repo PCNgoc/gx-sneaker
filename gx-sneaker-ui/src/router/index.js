@@ -39,6 +39,7 @@ import CheckoutView from '@/views/user/CheckoutView.vue'
 import KhachHangView from '@/views/admin/KhachHangView.vue'
 import PhieuGiamGiaView from '@/views/admin/PhieuGiamGiaView.vue'
 import GioHangView from '@/views/user/GioHangView.vue'
+import ContactView from '@/views/user/ContactView.vue'
 
 
 const router = createRouter({
@@ -174,6 +175,16 @@ const router = createRouter({
       path: '/checkout',
       name: 'checkout',
       component: CheckoutView
+    },
+    {
+      path: '/contact',
+      name: 'contact',
+      component: ContactView
+    },
+    {
+      path: '/lien-he',
+      name: 'lien-he',
+      component: ContactView
     },
 
 
