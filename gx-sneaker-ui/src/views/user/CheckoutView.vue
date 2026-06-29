@@ -25,6 +25,9 @@ const voucherCode = ref("")
 const voucherError = ref("")
 const voucherSuccess = ref("")
 const availableVouchers = ref([])
+const showVouchersList = ref(false)
+const currentPage = ref(1)
+const pageSize = 2
 
 const formatMoneyCompact = (value) => {
   if (!value) return "0"
@@ -165,6 +168,42 @@ const finalTotal = computed(() => {
   const total = totalMoney.value - discountAmount.value + shipFee.value
   return total < 0 ? 0 : total
 })
+
+const getPotentialDiscount = (v, total) => {
+  if (v.loaiGiamGia) {
+    let calc = (total * v.giaTriGiam) / 100
+    if (v.giaTriGiamToiDa > 0 && calc > v.giaTriGiamToiDa) {
+      calc = v.giaTriGiamToiDa
+    }
+    return calc
+  }
+  return v.giaTriGiam
+}
+
+const sortedVouchers = computed(() => {
+  const total = totalMoney.value
+  return [...availableVouchers.value].sort((a, b) => {
+    const discA = getPotentialDiscount(a, total)
+    const discB = getPotentialDiscount(b, total)
+    return discB - discA // highest discount first
+  })
+})
+
+const totalPages = computed(() => {
+  const count = sortedVouchers.value.length
+  return count > 0 ? Math.ceil(count / pageSize) : 1
+})
+
+const paginatedVouchers = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  const end = start + pageSize
+  return sortedVouchers.value.slice(start, end)
+})
+
+const toggleVouchersList = () => {
+  showVouchersList.value = !showVouchersList.value
+  currentPage.value = 1
+}
 
 const placeOrder = async () => {
   if (!fullName.value.trim()) {
@@ -314,12 +353,21 @@ const placeOrder = async () => {
           <p v-if="voucherError" class="voucher-error">{{ voucherError }}</p>
           <p v-if="voucherSuccess" class="voucher-success">{{ voucherSuccess }}</p>
 
-          <!-- Suggested Vouchers list below input -->
-          <div v-if="availableVouchers.length > 0" class="suggested-vouchers-container">
-            <h4 class="suggested-title">Mã giảm giá dành cho bạn:</h4>
+          <!-- Suggested Vouchers trigger line -->
+          <div v-if="availableVouchers.length > 0" class="voucher-suggest-trigger" @click="toggleVouchersList">
+            <span class="trigger-icon">💡</span>
+            <span class="trigger-text">
+              Bạn có <strong>{{ availableVouchers.length }}</strong> mã giảm giá khả dụng.
+              <span class="trigger-action">{{ showVouchersList ? 'Thu gọn' : 'Xem gợi ý' }}</span>
+            </span>
+            <span class="trigger-arrow" :class="{ 'rotated': showVouchersList }">▼</span>
+          </div>
+
+          <!-- Suggested Vouchers list below input (collapsible and paginated) -->
+          <div v-if="showVouchersList && paginatedVouchers.length > 0" class="suggested-vouchers-container">
             <div class="vouchers-list-scroll">
               <div 
-                v-for="v in availableVouchers" 
+                v-for="v in paginatedVouchers" 
                 :key="v.id" 
                 class="voucher-suggest-card"
                 :class="{ 
@@ -372,6 +420,25 @@ const placeOrder = async () => {
                   </div>
                 </div>
               </div>
+            </div>
+
+            <!-- Pagination Controls -->
+            <div v-if="totalPages > 1" class="voucher-pagination">
+              <button 
+                :disabled="currentPage === 1" 
+                class="btn-page-nav" 
+                @click="currentPage--"
+              >
+                ◀
+              </button>
+              <span class="page-indicator">Trang {{ currentPage }} / {{ totalPages }}</span>
+              <button 
+                :disabled="currentPage === totalPages" 
+                class="btn-page-nav" 
+                @click="currentPage++"
+              >
+                ▶
+              </button>
             </div>
           </div>
         </div>
@@ -948,5 +1015,95 @@ const placeOrder = async () => {
   background: #f1f5f9;
   padding: 2px 6px;
   border-radius: 4px;
+}
+
+/* Suggested Vouchers Trigger Line */
+.voucher-suggest-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-top: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.voucher-suggest-trigger:hover {
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.trigger-icon {
+  font-size: 15px;
+}
+
+.trigger-text {
+  flex: 1;
+  font-size: 12.5px;
+  color: #166534;
+}
+
+.trigger-action {
+  color: #059669;
+  text-decoration: underline;
+  margin-left: 6px;
+  font-weight: 700;
+}
+
+.trigger-arrow {
+  font-size: 10px;
+  color: #166534;
+  transition: transform 0.2s ease;
+}
+
+.trigger-arrow.rotated {
+  transform: rotate(180deg);
+}
+
+/* Pagination Controls */
+.voucher-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.btn-page-nav {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #64748b;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-page-nav:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #1e293b;
+  border-color: #94a3b8;
+}
+
+.btn-page-nav:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-indicator {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
 }
 </style>
