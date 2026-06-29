@@ -2,10 +2,15 @@
 import { ref, computed, onMounted } from "vue"
 import { datHang, apDungMaGiamGia } from "@/services/HoaDonService"
 import { useRouter } from "vue-router"
+import { useCart } from "@/composables/useCart"
+import { getByKhachHangId as getAddresses } from "@/services/diaChiService"
 
 const router = useRouter()
+const { fetchCartCount } = useCart()
 
-const product = ref(null)
+const checkoutItems = ref([])
+const isFromCart = ref(false)
+const savedAddresses = ref([])
 
 const fullName = ref("")
 const phone = ref("")
@@ -16,11 +21,11 @@ const paymentMethod = ref("COD")
 const shipFee = ref(30000)
 const loading = ref(false)
 const qrConfirmed = ref(false)
+
 const couponCode = ref("")
 const appliedCoupon = ref(null)
 const discountAmount = ref(0)
 const couponLoading = ref(false)
-
 
 const bankInfo = {
   bankId: "MB",
@@ -45,30 +50,98 @@ const formatMoney = (value) => {
   return Number(value || 0).toLocaleString("vi-VN") + " đ"
 }
 
-onMounted(() => {
-  const data = localStorage.getItem("buyNowProduct")
+const getCurrentUser = () => {
+  try {
+    const userData = localStorage.getItem("user")
+    return userData ? JSON.parse(userData) : null
+  } catch (e) {
+    console.error("Lỗi parse user:", e)
+    return null
+  }
+}
 
-  if (!data) {
-    alert("Không có sản phẩm để thanh toán")
-    router.push("/products")
-    return
+onMounted(async () => {
+  const user = getCurrentUser()
+
+  if (user) {
+    fullName.value = user.hoTen || user.fullName || ""
+    phone.value = user.soDienThoai || user.phone || ""
+
+    if (user.id) {
+      try {
+        const res = await getAddresses(user.id)
+        savedAddresses.value = res.data || []
+      } catch (e) {
+        console.error("Lỗi tải địa chỉ:", e)
+      }
+    }
   }
 
-  product.value = JSON.parse(data)
+  const cartCheckout = localStorage.getItem("checkoutData")
+  const buyNowData = localStorage.getItem("buyNowProduct")
 
-  console.log("===== BUY NOW PRODUCT =====")
-  console.log(product.value)
+  if (cartCheckout) {
+    const parsed = JSON.parse(cartCheckout)
+    isFromCart.value = true
+    checkoutItems.value = parsed.items || []
+  } else if (buyNowData) {
+    isFromCart.value = false
+    checkoutItems.value = [JSON.parse(buyNowData)]
+  } else {
+    alert("Không có sản phẩm để thanh toán")
+    router.push("/products")
+  }
 })
 
-const totalMoney = computed(() => {
-  if (!product.value) return 0
+const getItemPrice = (item) => {
+  return Number(
+    item?.price ||
+    item?.giaBan ||
+    item?.donGia ||
+    item?.gia ||
+    0
+  )
+}
 
-  return Number(product.value.price || 0) * Number(product.value.quantity || 1)
+const getItemQuantity = (item) => {
+  return Number(
+    item?.quantity ||
+    item?.soLuong ||
+    1
+  )
+}
+
+const totalMoney = computed(() => {
+  return checkoutItems.value.reduce((sum, item) => {
+    return sum + getItemPrice(item) * getItemQuantity(item)
+  }, 0)
 })
 
 const finalTotal = computed(() => {
   return Math.max(totalMoney.value - discountAmount.value + shipFee.value, 0)
 })
+
+const selectAddress = (addr) => {
+  fullName.value =
+    addr.hoTenNguoiNhan ||
+    addr.tenNguoiNhan ||
+    addr.hoTen ||
+    ""
+
+  phone.value =
+    addr.soDienThoai ||
+    addr.phone ||
+    ""
+
+  const parts = [
+    addr.diaChiChiTiet,
+    addr.phuongXa,
+    addr.quanHuyen,
+    addr.tinhThanh,
+  ].filter(Boolean)
+
+  address.value = parts.join(", ")
+}
 
 const applyCoupon = async () => {
   if (!couponCode.value.trim()) {
@@ -76,7 +149,7 @@ const applyCoupon = async () => {
     return
   }
 
-  if (!product.value) {
+  if (!checkoutItems.value.length) {
     alert("Không có sản phẩm để áp dụng mã")
     return
   }
@@ -114,28 +187,66 @@ const removeCoupon = () => {
   discountAmount.value = 0
 }
 
-const getChiTietSanPhamId = () => {
+const getChiTietSanPhamId = (item) => {
   return (
-    product.value?.detailId ||
-    product.value?.chiTietSanPhamId ||
-    product.value?.idChiTietSanPham ||
-    product.value?.id_chi_tiet_san_pham ||
-    product.value?.id
+    item?.detailId ||
+    item?.chiTietSanPhamId ||
+    item?.idChiTietSanPham ||
+    item?.id_chi_tiet_san_pham ||
+    item?.idChiTietSP ||
+    item?.chiTietSanPham?.id ||
+    item?.id
   )
 }
 
 const getImageUrl = (image) => {
   if (!image) return "/images/no-image.png"
 
-  if (image.startsWith("http")) {
-    return image
-  }
+  if (image.startsWith("http")) return image
 
-  if (image.startsWith("/")) {
-    return image
-  }
+  if (image.startsWith("/")) return image
 
   return `/images/${image}`
+}
+
+const getItemImage = (item) => {
+  return (
+    item?.image ||
+    item?.hinhAnh ||
+    item?.anh ||
+    item?.imageUrl ||
+    item?.sanPham?.hinhAnh ||
+    ""
+  )
+}
+
+const getItemName = (item) => {
+  return (
+    item?.productName ||
+    item?.tenSanPham ||
+    item?.name ||
+    item?.sanPham?.tenSanPham ||
+    "Sản phẩm"
+  )
+}
+
+const getItemColor = (item) => {
+  return (
+    item?.color ||
+    item?.mauSac ||
+    item?.tenMau ||
+    item?.mau ||
+    "Không có"
+  )
+}
+
+const getItemSize = (item) => {
+  return (
+    item?.size ||
+    item?.kichCo ||
+    item?.tenSize ||
+    "Không có"
+  )
 }
 
 const validateForm = () => {
@@ -163,38 +274,43 @@ const validateForm = () => {
   return true
 }
 
+const getCustomerId = () => {
+  const user = getCurrentUser()
+
+  return (
+    localStorage.getItem("userId") ||
+    localStorage.getItem("idKhachHang") ||
+    user?.id ||
+    1
+  )
+}
+
 const placeOrder = async () => {
-  if (!product.value) {
+  if (!checkoutItems.value.length) {
     alert("Không có sản phẩm")
     return
   }
 
-  if (!validateForm()) {
-    return
-  }
+  if (!validateForm()) return
+
   if (paymentMethod.value === "QR" && !qrConfirmed.value) {
     alert("Vui lòng xác nhận rằng bạn đã thực hiện chuyển khoản và chờ admin kiểm tra")
     return
   }
 
-  const chiTietSanPhamId = getChiTietSanPhamId()
+  const invalidItem = checkoutItems.value.find(item => !getChiTietSanPhamId(item))
 
-  if (!chiTietSanPhamId) {
-    alert("Không tìm thấy ID chi tiết sản phẩm")
-    console.log("Product bị thiếu id chi tiết:", product.value)
+  if (invalidItem) {
+    alert("Có sản phẩm bị thiếu ID chi tiết sản phẩm")
+    console.log("Sản phẩm thiếu ID chi tiết:", invalidItem)
     return
   }
 
   try {
     loading.value = true
 
-    const idKhachHang =
-      localStorage.getItem("userId") ||
-      localStorage.getItem("idKhachHang") ||
-      1
-
     const request = {
-      idKhachHang: Number(idKhachHang),
+      idKhachHang: Number(getCustomerId()),
       tenNguoiNhan: fullName.value.trim(),
       soDienThoai: phone.value.trim(),
       diaChi: address.value.trim(),
@@ -205,12 +321,10 @@ const placeOrder = async () => {
       maPhieuGiamGia: appliedCoupon.value
         ? appliedCoupon.value.maPhieuGiamGia || couponCode.value.trim()
         : null,
-      items: [
-        {
-          chiTietSanPhamId: Number(chiTietSanPhamId),
-          soLuong: Number(product.value.quantity || 1),
-        },
-      ],
+      items: checkoutItems.value.map(item => ({
+        chiTietSanPhamId: Number(getChiTietSanPhamId(item)),
+        soLuong: getItemQuantity(item),
+      })),
     }
 
     console.log("===== REQUEST DAT HANG =====")
@@ -222,6 +336,19 @@ const placeOrder = async () => {
     console.log(res.data)
 
     localStorage.removeItem("buyNowProduct")
+    localStorage.removeItem("checkoutData")
+
+    if (isFromCart.value) {
+      const user = getCurrentUser()
+
+      if (user?.id) {
+        try {
+          await fetchCartCount(user.id)
+        } catch (e) {
+          console.error("Lỗi cập nhật số lượng giỏ hàng:", e)
+        }
+      }
+    }
 
     router.push({
       path: `/order-success/${res.data.id}`,
@@ -260,15 +387,40 @@ const placeOrder = async () => {
     </div>
 
     <div class="checkout-wrapper">
-      <!-- LEFT -->
       <div class="left-content">
-        <!-- Thông tin nhận hàng -->
         <section class="card">
           <div class="card-title">
             <span class="step">1</span>
             <div>
               <h2>Thông tin nhận hàng</h2>
               <p>Vui lòng nhập chính xác thông tin giao hàng</p>
+            </div>
+          </div>
+
+          <div v-if="savedAddresses.length > 0" class="saved-addresses-picker">
+            <label class="picker-label">Chọn nhanh địa chỉ đã lưu</label>
+
+            <div class="address-chips">
+              <button
+                v-for="addr in savedAddresses"
+                :key="addr.id"
+                type="button"
+                class="address-chip"
+                @click="selectAddress(addr)"
+              >
+                <strong>
+                  {{ addr.hoTenNguoiNhan || addr.tenNguoiNhan || addr.hoTen }}
+                </strong>
+                -
+                {{ addr.soDienThoai }}
+
+                <span class="chip-text">
+                  {{ addr.diaChiChiTiet }},
+                  {{ addr.phuongXa }},
+                  {{ addr.quanHuyen }},
+                  {{ addr.tinhThanh }}
+                </span>
+              </button>
             </div>
           </div>
 
@@ -311,7 +463,6 @@ const placeOrder = async () => {
           </div>
         </section>
 
-        <!-- Phương thức thanh toán -->
         <section class="card">
           <div class="card-title">
             <span class="step">2</span>
@@ -385,27 +536,30 @@ const placeOrder = async () => {
         </section>
       </div>
 
-      <!-- RIGHT -->
       <aside class="order-summary">
         <h2>Đơn hàng của bạn</h2>
 
-        <div v-if="product" class="product-box">
+        <div
+          v-for="(item, index) in checkoutItems"
+          :key="index"
+          class="product-box"
+        >
           <img
-            :src="getImageUrl(product.image)"
+            :src="getImageUrl(getItemImage(item))"
             alt="Ảnh sản phẩm"
           >
 
           <div class="product-info">
-            <h3>{{ product.productName }}</h3>
+            <h3>{{ getItemName(item) }}</h3>
 
             <div class="variant">
-              <span>Màu: <b>{{ product.color }}</b></span>
-              <span>Size: <b>{{ product.size }}</b></span>
+              <span>Màu: <b>{{ getItemColor(item) }}</b></span>
+              <span>Size: <b>{{ getItemSize(item) }}</b></span>
             </div>
 
             <div class="quantity-price">
-              <span>x{{ product.quantity }}</span>
-              <strong>{{ formatMoney(product.price) }}</strong>
+              <span>x{{ getItemQuantity(item) }}</span>
+              <strong>{{ formatMoney(getItemPrice(item)) }}</strong>
             </div>
           </div>
         </div>
@@ -419,6 +573,7 @@ const placeOrder = async () => {
               type="text"
               placeholder="Nhập mã giảm giá"
               :disabled="!!appliedCoupon"
+              @keyup.enter="applyCoupon"
             >
 
             <button
@@ -441,8 +596,8 @@ const placeOrder = async () => {
           </div>
 
           <p v-if="appliedCoupon" class="coupon-success">
-            Đã áp dụng: {{ appliedCoupon.maPhieuGiamGia }} -
-            giảm {{ formatMoney(discountAmount) }}
+            Đã áp dụng: {{ appliedCoupon.maPhieuGiamGia }}
+            - giảm {{ formatMoney(discountAmount) }}
           </p>
         </div>
 
@@ -588,6 +743,52 @@ const placeOrder = async () => {
   font-size: 14px;
 }
 
+.saved-addresses-picker {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+}
+
+.picker-label {
+  display: block;
+  margin-bottom: 12px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.address-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.address-chip {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #e5e7eb;
+  background: white;
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  color: #374151;
+  transition: 0.2s;
+}
+
+.address-chip:hover {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.chip-text {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -650,12 +851,6 @@ const placeOrder = async () => {
   background: #fef2f2;
 }
 
-.payment-item.disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-  background: #f3f4f6;
-}
-
 .payment-item input {
   margin-top: 6px;
 }
@@ -676,6 +871,62 @@ const placeOrder = async () => {
   color: #6b7280;
 }
 
+.qr-box {
+  margin-top: 22px;
+  padding: 22px;
+  border-radius: 20px;
+  background: #f8fafc;
+  border: 1px dashed #dc2626;
+}
+
+.qr-box h3 {
+  margin: 0 0 16px;
+  color: #111827;
+}
+
+.qr-content {
+  display: flex;
+  gap: 22px;
+  align-items: center;
+}
+
+.qr-image {
+  width: 220px;
+  height: 220px;
+  border-radius: 16px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  padding: 10px;
+}
+
+.bank-detail p {
+  margin: 8px 0;
+  color: #374151;
+}
+
+.bank-detail strong {
+  color: #111827;
+}
+
+.bank-detail .money {
+  color: #dc2626;
+  font-size: 20px;
+}
+
+.confirm-transfer {
+  margin-top: 18px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-weight: 700;
+  color: #111827;
+}
+
+.confirm-transfer input {
+  width: 18px;
+  height: 18px;
+}
+
 .order-summary {
   position: sticky;
   top: 24px;
@@ -685,6 +936,12 @@ const placeOrder = async () => {
   display: flex;
   gap: 16px;
   margin-top: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.product-box:last-of-type {
+  border-bottom: none;
 }
 
 .product-box img {
@@ -726,6 +983,69 @@ const placeOrder = async () => {
   color: #dc2626;
 }
 
+.coupon-box {
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: 16px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+}
+
+.coupon-box label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.coupon-input {
+  display: flex;
+  gap: 10px;
+}
+
+.coupon-input input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  outline: none;
+  font-weight: 600;
+  background: white;
+}
+
+.coupon-input input:focus {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.08);
+}
+
+.coupon-input button {
+  border: none;
+  border-radius: 12px;
+  padding: 0 14px;
+  background: #111827;
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.coupon-input button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-remove-coupon {
+  background: #6b7280 !important;
+}
+
+.coupon-success {
+  margin: 10px 0 0;
+  color: #16a34a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .divider {
   height: 1px;
   background: #e5e7eb;
@@ -739,6 +1059,10 @@ const placeOrder = async () => {
   margin: 14px 0;
   font-size: 15px;
   color: #374151;
+}
+
+.discount-text {
+  color: #16a34a;
 }
 
 .total-row {
@@ -819,6 +1143,16 @@ const placeOrder = async () => {
     border-radius: 20px;
   }
 
+  .qr-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .qr-image {
+    width: 100%;
+    height: auto;
+  }
+
   .product-box {
     flex-direction: column;
   }
@@ -827,128 +1161,5 @@ const placeOrder = async () => {
     width: 100%;
     height: 220px;
   }
-}
-
-.qr-box {
-  margin-top: 22px;
-  padding: 22px;
-  border-radius: 20px;
-  background: #f8fafc;
-  border: 1px dashed #dc2626;
-}
-
-.qr-box h3 {
-  margin: 0 0 16px;
-  color: #111827;
-}
-
-.qr-content {
-  display: flex;
-  gap: 22px;
-  align-items: center;
-}
-
-.qr-image {
-  width: 220px;
-  height: 220px;
-  border-radius: 16px;
-  background: white;
-  border: 1px solid #e5e7eb;
-  padding: 10px;
-}
-
-.bank-detail p {
-  margin: 8px 0;
-  color: #374151;
-}
-
-.bank-detail strong {
-  color: #111827;
-}
-
-.bank-detail .money {
-  color: #dc2626;
-  font-size: 20px;
-}
-
-.confirm-transfer {
-  margin-top: 18px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  font-weight: 700;
-  color: #111827;
-}
-
-.confirm-transfer input {
-  width: 18px;
-  height: 18px;
-}
-
-.coupon-box {
-  margin-top: 20px;
-  padding: 16px;
-  border-radius: 16px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-}
-
-.coupon-box label {
-  display: block;
-  margin-bottom: 10px;
-  font-weight: 800;
-  color: #111827;
-}
-
-.coupon-input {
-  display: flex;
-  gap: 10px;
-}
-
-.coupon-input input {
-  flex: 1;
-  min-width: 0;
-  padding: 12px 14px;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  outline: none;
-  font-weight: 600;
-  background: white;
-}
-
-.coupon-input input:focus {
-  border-color: #dc2626;
-  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.08);
-}
-
-.coupon-input button {
-  border: none;
-  border-radius: 12px;
-  padding: 0 14px;
-  background: #111827;
-  color: white;
-  font-weight: 800;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.coupon-input button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-remove-coupon {
-  background: #6b7280 !important;
-}
-
-.coupon-success {
-  margin: 10px 0 0;
-  color: #16a34a;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.discount-text {
-  color: #16a34a;
 }
 </style>
