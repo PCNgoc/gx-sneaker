@@ -3,8 +3,10 @@ package com.gxsneaker.gxsneaker.controller;
 import com.gxsneaker.gxsneaker.dto.*;
 import com.gxsneaker.gxsneaker.entity.HoaDon;
 import com.gxsneaker.gxsneaker.entity.LichSuTrangThaiHoaDon;
+import com.gxsneaker.gxsneaker.entity.PhieuGiamGia;
 import com.gxsneaker.gxsneaker.repository.HoaDonRepository;
 import com.gxsneaker.gxsneaker.repository.LichSuTrangThaiHoaDonRepository;
+import com.gxsneaker.gxsneaker.repository.PhieuGiamGiaRepository;
 import com.gxsneaker.gxsneaker.service.HoaDonService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -22,6 +24,9 @@ import java.util.Optional;
 @RequestMapping("/api/hoa-don")
 @CrossOrigin("*")
 public class HoaDonController {
+
+    @Autowired
+    private PhieuGiamGiaRepository phieuGiamGiaRepository;
 
     @Autowired
     private HoaDonRepository repository;
@@ -301,5 +306,99 @@ public class HoaDonController {
         return ResponseEntity.ok(
                 hoaDonService.getOrdersByCustomer(id)
         );
+    }
+
+    @PostMapping("/ap-dung-ma-giam-gia")
+    public ResponseEntity<?> apDungMaGiamGia(
+            @RequestBody ApDungMaGiamGiaRequest request
+    ) {
+        try {
+            if (request.getMaPhieuGiamGia() == null
+                    || request.getMaPhieuGiamGia().trim().isEmpty()) {
+                throw new RuntimeException("Vui lòng nhập mã giảm giá");
+            }
+
+            if (request.getTongTienHang() == null
+                    || request.getTongTienHang().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new RuntimeException("Tổng tiền hàng không hợp lệ");
+            }
+
+            PhieuGiamGia phieu = phieuGiamGiaRepository
+                    .findByMaPhieuIgnoreCase(request.getMaPhieuGiamGia().trim())
+                    .orElseThrow(() -> new RuntimeException("Mã giảm giá không tồn tại"));
+
+            if (phieu.getTrangThai() == null || !phieu.getTrangThai()) {
+                throw new RuntimeException("Mã giảm giá không hoạt động");
+            }
+
+            Date now = new Date();
+
+            if (phieu.getNgayBatDau() != null && now.before(phieu.getNgayBatDau())) {
+                throw new RuntimeException("Mã giảm giá chưa đến thời gian sử dụng");
+            }
+
+            if (phieu.getNgayKetThuc() != null && now.after(phieu.getNgayKetThuc())) {
+                throw new RuntimeException("Mã giảm giá đã hết hạn");
+            }
+
+            if (phieu.getSoLuong() != null && phieu.getSoLuong() <= 0) {
+                throw new RuntimeException("Mã giảm giá đã hết lượt sử dụng");
+            }
+
+            if (phieu.getGiaTriGiam() == null) {
+                throw new RuntimeException("Giá trị giảm không hợp lệ");
+            }
+
+            BigDecimal tongTienHang = request.getTongTienHang();
+
+            BigDecimal dieuKien = phieu.getGiaTriDonHangToiThieu() == null
+                    ? BigDecimal.ZERO
+                    : phieu.getGiaTriDonHangToiThieu();
+
+            if (tongTienHang.compareTo(dieuKien) < 0) {
+                throw new RuntimeException(
+                        "Đơn hàng chưa đạt giá trị tối thiểu để dùng mã này"
+                );
+            }
+
+            BigDecimal soTienGiam;
+
+            if (Boolean.TRUE.equals(phieu.getLoaiGiamGia())) {
+                soTienGiam = tongTienHang
+                        .multiply(phieu.getGiaTriGiam())
+                        .divide(BigDecimal.valueOf(100));
+            } else {
+                soTienGiam = phieu.getGiaTriGiam();
+            }
+
+            if (phieu.getGiaTriGiamToiDa() != null
+                    && soTienGiam.compareTo(phieu.getGiaTriGiamToiDa()) > 0) {
+                soTienGiam = phieu.getGiaTriGiamToiDa();
+            }
+
+            if (soTienGiam.compareTo(tongTienHang) > 0) {
+                soTienGiam = tongTienHang;
+            }
+
+            if (soTienGiam.compareTo(BigDecimal.ZERO) < 0) {
+                soTienGiam = BigDecimal.ZERO;
+            }
+
+            BigDecimal tongTienSauGiam = tongTienHang.subtract(soTienGiam);
+
+            return ResponseEntity.ok(
+                    new ApDungMaGiamGiaResponse(
+                            phieu.getId().longValue(),
+                            phieu.getMaPhieu(),
+                            phieu.getTenPhieu(),
+                            soTienGiam,
+                            tongTienSauGiam,
+                            "Áp dụng mã giảm giá thành công"
+                    )
+            );
+
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 }

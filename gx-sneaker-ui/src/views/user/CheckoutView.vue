@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from "vue"
-import { datHang } from "@/services/HoaDonService"
+import { datHang, apDungMaGiamGia } from "@/services/HoaDonService"
 import { useRouter } from "vue-router"
 
 const router = useRouter()
@@ -16,6 +16,11 @@ const paymentMethod = ref("COD")
 const shipFee = ref(30000)
 const loading = ref(false)
 const qrConfirmed = ref(false)
+const couponCode = ref("")
+const appliedCoupon = ref(null)
+const discountAmount = ref(0)
+const couponLoading = ref(false)
+
 
 const bankInfo = {
   bankId: "MB",
@@ -62,8 +67,52 @@ const totalMoney = computed(() => {
 })
 
 const finalTotal = computed(() => {
-  return totalMoney.value + shipFee.value
+  return Math.max(totalMoney.value - discountAmount.value + shipFee.value, 0)
 })
+
+const applyCoupon = async () => {
+  if (!couponCode.value.trim()) {
+    alert("Vui lòng nhập mã giảm giá")
+    return
+  }
+
+  if (!product.value) {
+    alert("Không có sản phẩm để áp dụng mã")
+    return
+  }
+
+  try {
+    couponLoading.value = true
+
+    const res = await apDungMaGiamGia({
+      maPhieuGiamGia: couponCode.value.trim(),
+      tongTienHang: totalMoney.value,
+    })
+
+    appliedCoupon.value = res.data
+    discountAmount.value = Number(res.data.soTienGiam || 0)
+    couponCode.value = res.data.maPhieuGiamGia || couponCode.value.trim()
+
+    alert(res.data.message || "Áp dụng mã giảm giá thành công")
+  } catch (e) {
+    appliedCoupon.value = null
+    discountAmount.value = 0
+
+    alert(
+      e.response?.data?.message ||
+      e.response?.data ||
+      "Mã giảm giá không hợp lệ"
+    )
+  } finally {
+    couponLoading.value = false
+  }
+}
+
+const removeCoupon = () => {
+  couponCode.value = ""
+  appliedCoupon.value = null
+  discountAmount.value = 0
+}
 
 const getChiTietSanPhamId = () => {
   return (
@@ -124,7 +173,7 @@ const placeOrder = async () => {
     return
   }
   if (paymentMethod.value === "QR" && !qrConfirmed.value) {
-    alert("Vui lòng chuyển khoản và tích xác nhận đã chuyển khoản")
+    alert("Vui lòng xác nhận rằng bạn đã thực hiện chuyển khoản và chờ admin kiểm tra")
     return
   }
 
@@ -149,7 +198,13 @@ const placeOrder = async () => {
       tenNguoiNhan: fullName.value.trim(),
       soDienThoai: phone.value.trim(),
       diaChi: address.value.trim(),
-      ghiChu: note.value.trim(),
+      ghiChu:
+        paymentMethod.value === "QR"
+          ? `[QR_MB_CHO_XAC_NHAN] ${note.value.trim()}`
+          : `[COD_CHO_XAC_NHAN] ${note.value.trim()}`,
+      maPhieuGiamGia: appliedCoupon.value
+        ? appliedCoupon.value.maPhieuGiamGia || couponCode.value.trim()
+        : null,
       items: [
         {
           chiTietSanPhamId: Number(chiTietSanPhamId),
@@ -168,9 +223,13 @@ const placeOrder = async () => {
 
     localStorage.removeItem("buyNowProduct")
 
-    alert("Đặt hàng thành công!\nMã hóa đơn: " + res.data.maHoaDon)
-
-    router.push("/orders")
+    router.push({
+      path: `/order-success/${res.data.id}`,
+      query: {
+        maHoaDon: res.data.maHoaDon,
+        payment: paymentMethod.value,
+      },
+    })
   } catch (e) {
     console.error(e)
     console.log(e.response)
@@ -320,7 +379,7 @@ const placeOrder = async () => {
                 v-model="qrConfirmed"
                 type="checkbox"
               >
-              Tôi đã chuyển khoản đúng số tiền và nội dung
+              Tôi đã thực hiện chuyển khoản và hiểu rằng đơn hàng sẽ chờ admin xác nhận
             </label>
           </div>
         </section>
@@ -351,6 +410,42 @@ const placeOrder = async () => {
           </div>
         </div>
 
+        <div class="coupon-box">
+          <label>Mã giảm giá</label>
+
+          <div class="coupon-input">
+            <input
+              v-model="couponCode"
+              type="text"
+              placeholder="Nhập mã giảm giá"
+              :disabled="!!appliedCoupon"
+            >
+
+            <button
+              v-if="!appliedCoupon"
+              type="button"
+              :disabled="couponLoading"
+              @click="applyCoupon"
+            >
+              {{ couponLoading ? "Đang kiểm tra..." : "Áp dụng" }}
+            </button>
+
+            <button
+              v-else
+              type="button"
+              class="btn-remove-coupon"
+              @click="removeCoupon"
+            >
+              Hủy
+            </button>
+          </div>
+
+          <p v-if="appliedCoupon" class="coupon-success">
+            Đã áp dụng: {{ appliedCoupon.maPhieuGiamGia }} -
+            giảm {{ formatMoney(discountAmount) }}
+          </p>
+        </div>
+
         <div class="divider"></div>
 
         <div class="price-row">
@@ -365,7 +460,7 @@ const placeOrder = async () => {
 
         <div class="price-row">
           <span>Giảm giá</span>
-          <strong>0 đ</strong>
+          <strong class="discount-text">-{{ formatMoney(discountAmount) }}</strong>
         </div>
 
         <div class="divider"></div>
@@ -384,8 +479,8 @@ const placeOrder = async () => {
             loading
               ? "ĐANG XỬ LÝ..."
               : paymentMethod === "QR"
-                ? "TÔI ĐÃ CHUYỂN KHOẢN - ĐẶT HÀNG"
-                : "ĐẶT HÀNG"
+                ? "GỬI ĐƠN - CHỜ ADMIN XÁC NHẬN THANH TOÁN"
+                : "ĐẶT HÀNG - CHỜ XÁC NHẬN"
           }}
         </button>
 
@@ -788,5 +883,72 @@ const placeOrder = async () => {
 .confirm-transfer input {
   width: 18px;
   height: 18px;
+}
+
+.coupon-box {
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: 16px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+}
+
+.coupon-box label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.coupon-input {
+  display: flex;
+  gap: 10px;
+}
+
+.coupon-input input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  outline: none;
+  font-weight: 600;
+  background: white;
+}
+
+.coupon-input input:focus {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.08);
+}
+
+.coupon-input button {
+  border: none;
+  border-radius: 12px;
+  padding: 0 14px;
+  background: #111827;
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.coupon-input button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-remove-coupon {
+  background: #6b7280 !important;
+}
+
+.coupon-success {
+  margin: 10px 0 0;
+  color: #16a34a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.discount-text {
+  color: #16a34a;
 }
 </style>

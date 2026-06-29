@@ -26,8 +26,13 @@ export const getHoaDonById = (idHoaDon) => {
   return axios.get(`${API_URL}/${idHoaDon}`, getAuthHeader())
 }
 
+export const apDungMaGiamGia = (data) => {
+  return axios.post(`${API_URL}/ap-dung-ma-giam-gia`, data)
+}
+
 export default {
   datHang,
   getHoaDonByKhachHang,
   getHoaDonById,
+  apDungMaGiamGia,
 }
