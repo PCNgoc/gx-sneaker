@@ -1,7 +1,7 @@
 package com.gxsneaker.gxsneaker.controller;
 
-import com.gxsneaker.gxsneaker.entity.GioHang;
-import com.gxsneaker.gxsneaker.entity.GioHangChiTiet;
+import com.gxsneaker.gxsneaker.dto.GioHangDTO;
+import com.gxsneaker.gxsneaker.dto.GioHangChiTietDTO;
 import com.gxsneaker.gxsneaker.service.GioHangService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -16,12 +16,12 @@ public class GioHangController {
     private GioHangService gioHangService;
 
     @GetMapping("/khach-hang/{khachHangId}")
-    public ResponseEntity<GioHang> getCartByKhachHangId(@PathVariable Integer khachHangId) {
+    public ResponseEntity<GioHangDTO> getCartByKhachHangId(@PathVariable Integer khachHangId) {
         return ResponseEntity.ok(gioHangService.getGioHangByKhachHangId(khachHangId));
     }
 
     @PostMapping("/khach-hang/{khachHangId}/add")
-    public ResponseEntity<GioHangChiTiet> addItemToCart(
+    public ResponseEntity<GioHangChiTietDTO> addItemToCart(
             @PathVariable Integer khachHangId,
             @RequestParam Long chiTietSanPhamId,
             @RequestParam Integer soLuong) {
@@ -29,7 +29,7 @@ public class GioHangController {
     }
 
     @PutMapping("/item/{cartItemId}")
-    public ResponseEntity<GioHangChiTiet> updateItemQuantity(
+    public ResponseEntity<GioHangChiTietDTO> updateItemQuantity(
             @PathVariable Integer cartItemId,
             @RequestParam Integer soLuong) {
         return ResponseEntity.ok(gioHangService.updateItemQuantity(cartItemId, soLuong));

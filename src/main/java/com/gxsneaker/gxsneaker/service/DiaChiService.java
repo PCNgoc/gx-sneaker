@@ -1,13 +1,14 @@
 package com.gxsneaker.gxsneaker.service;
 
-import com.gxsneaker.gxsneaker.entity.DiaChi;
+import com.gxsneaker.gxsneaker.dto.DiaChiDTO;
 import java.util.List;
 import java.util.Optional;
 
 public interface DiaChiService {
-    List<DiaChi> getDiaChiByKhachHangId(Integer khachHangId);
-    Optional<DiaChi> getDiaChiById(Integer id);
-    DiaChi createDiaChi(DiaChi diaChi);
-    DiaChi updateDiaChi(Integer id, DiaChi diaChi);
+    List<DiaChiDTO> getDiaChiByKhachHangId(Integer khachHangId);
+    Optional<DiaChiDTO> getDiaChiById(Integer id);
+    DiaChiDTO createDiaChi(DiaChiDTO diaChi);
+    DiaChiDTO updateDiaChi(Integer id, DiaChiDTO diaChi);
     void deleteDiaChi(Integer id);
 }
+

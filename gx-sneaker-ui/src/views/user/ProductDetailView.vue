@@ -13,11 +13,14 @@ import {
 import {
   addItemToCart
 } from "@/services/gioHangService"
+import { useCart } from "@/composables/useCart"
+
 
 
 
 const route = useRoute()
 const router = useRouter()
+const { fetchCartCount } = useCart()
 
 const loading = ref(true)
 
@@ -313,6 +316,7 @@ const addToCart = async () => {
 
     // Call backend API to add to cart database
     await addItemToCart(parsedUser.id, selectedVariant.value.id, quantity.value)
+    await fetchCartCount(parsedUser.id)
     alert("Đã thêm sản phẩm vào giỏ hàng thành công!")
   } catch (err) {
     console.error("Lỗi thêm vào giỏ hàng:", err)

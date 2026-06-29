@@ -1,8 +1,29 @@
 <script setup>
+import { onMounted, watch } from "vue"
 import { useAuth } from "@/composables/useAuth"
+import { useCart } from "@/composables/useCart"
 
 const { user, logout } = useAuth()
+const { cartCount, fetchCartCount } = useCart()
+
+onMounted(() => {
+  if (user.value && user.value.id) {
+    fetchCartCount(user.value.id)
+  }
+})
+
+watch(
+  () => user.value,
+  (newUser) => {
+    if (newUser && newUser.id) {
+      fetchCartCount(newUser.id)
+    } else {
+      fetchCartCount(null)
+    }
+  }
+)
 </script>
+
 
 <template>
 
@@ -103,7 +124,7 @@ const { user, logout } = useAuth()
 
           <i class="fas fa-cart-shopping"></i>
 
-          <span class="badge">0</span>
+          <span class="badge" v-if="cartCount > 0">{{ cartCount }}</span>
 
         </router-link>
 

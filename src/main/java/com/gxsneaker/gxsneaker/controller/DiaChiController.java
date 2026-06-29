@@ -1,6 +1,6 @@
 package com.gxsneaker.gxsneaker.controller;
 
-import com.gxsneaker.gxsneaker.entity.DiaChi;
+import com.gxsneaker.gxsneaker.dto.DiaChiDTO;
 import com.gxsneaker.gxsneaker.service.DiaChiService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -17,26 +17,26 @@ public class DiaChiController {
     private DiaChiService diaChiService;
 
     @GetMapping("/khach-hang/{khachHangId}")
-    public List<DiaChi> getDiaChiByKhachHangId(@PathVariable Integer khachHangId) {
+    public List<DiaChiDTO> getDiaChiByKhachHangId(@PathVariable Integer khachHangId) {
         return diaChiService.getDiaChiByKhachHangId(khachHangId);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<DiaChi> getDiaChiById(@PathVariable Integer id) {
+    public ResponseEntity<DiaChiDTO> getDiaChiById(@PathVariable Integer id) {
         return diaChiService.getDiaChiById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public DiaChi createDiaChi(@RequestBody DiaChi diaChi) {
+    public DiaChiDTO createDiaChi(@RequestBody DiaChiDTO diaChi) {
         return diaChiService.createDiaChi(diaChi);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<DiaChi> updateDiaChi(@PathVariable Integer id, @RequestBody DiaChi diaChi) {
+    public ResponseEntity<DiaChiDTO> updateDiaChi(@PathVariable Integer id, @RequestBody DiaChiDTO diaChi) {
         try {
-            DiaChi updated = diaChiService.updateDiaChi(id, diaChi);
+            DiaChiDTO updated = diaChiService.updateDiaChi(id, diaChi);
             return ResponseEntity.ok(updated);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();

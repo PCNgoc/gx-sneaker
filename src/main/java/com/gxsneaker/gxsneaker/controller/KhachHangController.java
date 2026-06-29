@@ -1,6 +1,6 @@
 package com.gxsneaker.gxsneaker.controller;
 
-import com.gxsneaker.gxsneaker.entity.KhachHang;
+import com.gxsneaker.gxsneaker.dto.KhachHangDTO;
 import com.gxsneaker.gxsneaker.service.KhachHangService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -17,21 +17,21 @@ public class KhachHangController {
     private KhachHangService khachHangService;
 
     @GetMapping
-    public List<KhachHang> getAllKhachHang() {
+    public List<KhachHangDTO> getAllKhachHang() {
         return khachHangService.getAllKhachHang();
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<KhachHang> getKhachHangById(@PathVariable Integer id) {
+    public ResponseEntity<KhachHangDTO> getKhachHangById(@PathVariable Integer id) {
         return khachHangService.getKhachHangById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public ResponseEntity<?> createKhachHang(@RequestBody KhachHang khachHang) {
+    public ResponseEntity<?> createKhachHang(@RequestBody KhachHangDTO khachHangDTO) {
         try {
-            KhachHang created = khachHangService.createKhachHang(khachHang);
+            KhachHangDTO created = khachHangService.createKhachHang(khachHangDTO);
             return ResponseEntity.ok(created);
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(java.util.Map.of("message", e.getMessage()));
@@ -39,9 +39,9 @@ public class KhachHangController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> updateKhachHang(@PathVariable Integer id, @RequestBody KhachHang khachHang) {
+    public ResponseEntity<?> updateKhachHang(@PathVariable Integer id, @RequestBody KhachHangDTO khachHangDTO) {
         try {
-            KhachHang updatedKhachHang = khachHangService.updateKhachHang(id, khachHang);
+            KhachHangDTO updatedKhachHang = khachHangService.updateKhachHang(id, khachHangDTO);
             return ResponseEntity.ok(updatedKhachHang);
         } catch (RuntimeException e) {
             if (e.getMessage().contains("not found")) {

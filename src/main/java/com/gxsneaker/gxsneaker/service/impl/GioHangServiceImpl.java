@@ -1,9 +1,13 @@
 package com.gxsneaker.gxsneaker.service.impl;
 
+import com.gxsneaker.gxsneaker.dto.GioHangDTO;
+import com.gxsneaker.gxsneaker.dto.GioHangChiTietDTO;
 import com.gxsneaker.gxsneaker.entity.ChiTietSanPham;
 import com.gxsneaker.gxsneaker.entity.GioHang;
 import com.gxsneaker.gxsneaker.entity.GioHangChiTiet;
 import com.gxsneaker.gxsneaker.entity.KhachHang;
+import com.gxsneaker.gxsneaker.mapper.GioHangMapper;
+import com.gxsneaker.gxsneaker.mapper.GioHangChiTietMapper;
 import com.gxsneaker.gxsneaker.repository.ChiTietSanPhamRepository;
 import com.gxsneaker.gxsneaker.repository.GioHangChiTietRepository;
 import com.gxsneaker.gxsneaker.repository.GioHangRepository;
@@ -32,9 +36,7 @@ public class GioHangServiceImpl implements GioHangService {
     @Autowired
     private ChiTietSanPhamRepository chiTietSanPhamRepository;
 
-    @Override
-    public GioHang getGioHangByKhachHangId(Integer khachHangId) {
-        // Find existing cart for customer
+    private GioHang getGioHangEntityByKhachHangId(Integer khachHangId) {
         Optional<GioHang> existingCart = gioHangRepository.findAll().stream()
                 .filter(gh -> gh.getKhachHang() != null && gh.getKhachHang().getId().equals(khachHangId))
                 .findFirst();
@@ -43,7 +45,6 @@ public class GioHangServiceImpl implements GioHangService {
             return existingCart.get();
         }
 
-        // Create new cart if not exists
         KhachHang khachHang = khachHangRepository.findById(khachHangId)
                 .orElseThrow(() -> new RuntimeException("KhachHang not found with id " + khachHangId));
 
@@ -57,12 +58,17 @@ public class GioHangServiceImpl implements GioHangService {
     }
 
     @Override
-    public GioHangChiTiet addItemToCart(Integer khachHangId, Long chiTietSanPhamId, Integer soLuong) {
-        GioHang cart = getGioHangByKhachHangId(khachHangId);
+    public GioHangDTO getGioHangByKhachHangId(Integer khachHangId) {
+        GioHang cart = getGioHangEntityByKhachHangId(khachHangId);
+        return GioHangMapper.toDTO(cart);
+    }
+
+    @Override
+    public GioHangChiTietDTO addItemToCart(Integer khachHangId, Long chiTietSanPhamId, Integer soLuong) {
+        GioHang cart = getGioHangEntityByKhachHangId(khachHangId);
         ChiTietSanPham productDetail = chiTietSanPhamRepository.findById(chiTietSanPhamId)
                 .orElseThrow(() -> new RuntimeException("ChiTietSanPham not found with id " + chiTietSanPhamId));
 
-        // Check if item already in cart
         Optional<GioHangChiTiet> existingItem = cart.getGioHangChiTiets().stream()
                 .filter(item -> item.getChiTietSanPham().getId().equals(chiTietSanPhamId))
                 .findFirst();
@@ -81,15 +87,13 @@ public class GioHangServiceImpl implements GioHangService {
         }
 
         GioHangChiTiet savedItem = gioHangChiTietRepository.save(cartItem);
-        
-        // Update total quantity
         updateCartTotalQuantity(cart);
         
-        return savedItem;
+        return GioHangChiTietMapper.toDTO(savedItem);
     }
 
     @Override
-    public GioHangChiTiet updateItemQuantity(Integer cartItemId, Integer soLuong) {
+    public GioHangChiTietDTO updateItemQuantity(Integer cartItemId, Integer soLuong) {
         GioHangChiTiet cartItem = gioHangChiTietRepository.findById(cartItemId)
                 .orElseThrow(() -> new RuntimeException("Cart item not found with id " + cartItemId));
 
@@ -97,7 +101,7 @@ public class GioHangServiceImpl implements GioHangService {
         GioHangChiTiet saved = gioHangChiTietRepository.save(cartItem);
 
         updateCartTotalQuantity(cartItem.getGioHang());
-        return saved;
+        return GioHangChiTietMapper.toDTO(saved);
     }
 
     @Override
@@ -114,7 +118,7 @@ public class GioHangServiceImpl implements GioHangService {
 
     @Override
     public void clearCart(Integer khachHangId) {
-        GioHang cart = getGioHangByKhachHangId(khachHangId);
+        GioHang cart = getGioHangEntityByKhachHangId(khachHangId);
         gioHangChiTietRepository.deleteAll(cart.getGioHangChiTiets());
         cart.getGioHangChiTiets().clear();
         cart.setTongSoLuong(0);

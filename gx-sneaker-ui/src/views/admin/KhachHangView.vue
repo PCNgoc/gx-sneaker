@@ -146,10 +146,6 @@ const saveAddress = async () => {
     alert("Tỉnh / Thành phố không được để trống!");
     return;
   }
-  if (!addressForm.value.quanHuyen || !addressForm.value.quanHuyen.trim()) {
-    alert("Quận / Huyện không được để trống!");
-    return;
-  }
   if (!addressForm.value.phuongXa || !addressForm.value.phuongXa.trim()) {
     alert("Phường / Xã không được để trống!");
     return;
@@ -162,7 +158,7 @@ const saveAddress = async () => {
   try {
     const data = {
       ...addressForm.value,
-      khachHang: { id: selectedCustomer.value.id }
+      idKhachHang: selectedCustomer.value.id
     }
     if (addressForm.value.id) {
       await updateAddress(addressForm.value.id, data)
@@ -350,11 +346,6 @@ const changePage = (p) => {
             </div>
             
             <div class="form-group">
-              <label>Quận / Huyện <span class="required">*</span></label>
-              <input v-model="addressForm.quanHuyen" placeholder="Quận / Huyện" />
-            </div>
-            
-            <div class="form-group">
               <label>Phường / Xã <span class="required">*</span></label>
               <input v-model="addressForm.phuongXa" placeholder="Phường / Xã" />
             </div>
@@ -376,7 +367,7 @@ const changePage = (p) => {
             <div v-if="addressList.length === 0">Chưa có địa chỉ nào.</div>
             <div v-for="addr in addressList" :key="addr.id" class="address-item">
               <p><strong>{{ addr.hoTenNguoiNhan }}</strong> ({{ addr.soDienThoai }})</p>
-              <p>{{ addr.diaChiChiTiet }}, {{ addr.phuongXa }}, {{ addr.quanHuyen }}, {{ addr.tinhThanh }}</p>
+              <p>{{ addr.diaChiChiTiet }}, {{ addr.phuongXa }}, {{ addr.tinhThanh }}</p>
               <div class="addr-actions">
                 <button @click="editAddress(addr)">✏️</button>
                 <button @click="deleteAddress(addr.id)">🗑</button>

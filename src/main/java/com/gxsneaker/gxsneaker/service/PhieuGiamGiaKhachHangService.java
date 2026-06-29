@@ -1,12 +1,13 @@
 package com.gxsneaker.gxsneaker.service;
 
-import com.gxsneaker.gxsneaker.entity.PhieuGiamGiaKhachHang;
+import com.gxsneaker.gxsneaker.dto.PhieuGiamGiaKhachHangDTO;
 import java.util.List;
 import java.util.Optional;
 
 public interface PhieuGiamGiaKhachHangService {
-    List<PhieuGiamGiaKhachHang> getVouchersByKhachHangId(Integer khachHangId);
-    PhieuGiamGiaKhachHang assignVoucherToKhachHang(Integer khachHangId, Integer phieuGiamGiaId);
-    PhieuGiamGiaKhachHang markAsUsed(Integer id);
-    Optional<PhieuGiamGiaKhachHang> getById(Integer id);
+    List<PhieuGiamGiaKhachHangDTO> getVouchersByKhachHangId(Integer khachHangId);
+    PhieuGiamGiaKhachHangDTO assignVoucherToKhachHang(Integer khachHangId, Integer phieuGiamGiaId);
+    PhieuGiamGiaKhachHangDTO markAsUsed(Integer id);
+    Optional<PhieuGiamGiaKhachHangDTO> getById(Integer id);
 }
+

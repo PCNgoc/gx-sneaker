@@ -21,7 +21,7 @@ public class PhieuGiamGia {
     @Column(name = "ma_phieu")
     private String maPhieu;
 
-    @Column(name = "ten_phieu")
+    @Column(name = "ten_phieu", columnDefinition = "NVARCHAR(255)")
     private String tenPhieu;
 
     @Column(name = "loai_giam_gia")

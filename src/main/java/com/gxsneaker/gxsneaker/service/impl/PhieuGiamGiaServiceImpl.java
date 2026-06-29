@@ -1,6 +1,8 @@
 package com.gxsneaker.gxsneaker.service.impl;
 
+import com.gxsneaker.gxsneaker.dto.PhieuGiamGiaDTO;
 import com.gxsneaker.gxsneaker.entity.PhieuGiamGia;
+import com.gxsneaker.gxsneaker.mapper.PhieuGiamGiaMapper;
 import com.gxsneaker.gxsneaker.repository.PhieuGiamGiaRepository;
 import com.gxsneaker.gxsneaker.service.PhieuGiamGiaService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,20 +18,23 @@ public class PhieuGiamGiaServiceImpl implements PhieuGiamGiaService {
     private PhieuGiamGiaRepository phieuGiamGiaRepository;
 
     @Override
-    public List<PhieuGiamGia> getAllPhieuGiamGia() {
-        return phieuGiamGiaRepository.findAll();
+    public List<PhieuGiamGiaDTO> getAllPhieuGiamGia() {
+        return phieuGiamGiaRepository.findAll().stream()
+                .map(PhieuGiamGiaMapper::toDTO)
+                .toList();
     }
 
     @Override
-    public Optional<PhieuGiamGia> getPhieuGiamGiaById(Integer id) {
-        return phieuGiamGiaRepository.findById(id);
+    public Optional<PhieuGiamGiaDTO> getPhieuGiamGiaById(Integer id) {
+        return phieuGiamGiaRepository.findById(id).map(PhieuGiamGiaMapper::toDTO);
     }
 
     @Override
-    public Optional<PhieuGiamGia> getPhieuGiamGiaByMa(String maPhieu) {
+    public Optional<PhieuGiamGiaDTO> getPhieuGiamGiaByMa(String maPhieu) {
         return phieuGiamGiaRepository.findAll().stream()
                 .filter(p -> p.getMaPhieu() != null && p.getMaPhieu().equalsIgnoreCase(maPhieu))
-                .findFirst();
+                .findFirst()
+                .map(PhieuGiamGiaMapper::toDTO);
     }
 
     private void validatePhieuGiamGia(PhieuGiamGia p, Integer excludeId) {
@@ -91,26 +96,30 @@ public class PhieuGiamGiaServiceImpl implements PhieuGiamGiaService {
     }
 
     @Override
-    public PhieuGiamGia createPhieuGiamGia(PhieuGiamGia phieuGiamGia) {
+    public PhieuGiamGiaDTO createPhieuGiamGia(PhieuGiamGiaDTO phieuGiamGiaDTO) {
+        PhieuGiamGia phieuGiamGia = PhieuGiamGiaMapper.toEntity(phieuGiamGiaDTO);
         validatePhieuGiamGia(phieuGiamGia, null);
-        return phieuGiamGiaRepository.save(phieuGiamGia);
+        PhieuGiamGia saved = phieuGiamGiaRepository.save(phieuGiamGia);
+        return PhieuGiamGiaMapper.toDTO(saved);
     }
 
     @Override
-    public PhieuGiamGia updatePhieuGiamGia(Integer id, PhieuGiamGia details) {
-        validatePhieuGiamGia(details, id);
+    public PhieuGiamGiaDTO updatePhieuGiamGia(Integer id, PhieuGiamGiaDTO details) {
+        PhieuGiamGia entityDetails = PhieuGiamGiaMapper.toEntity(details);
+        validatePhieuGiamGia(entityDetails, id);
         return phieuGiamGiaRepository.findById(id).map(p -> {
-            p.setMaPhieu(details.getMaPhieu());
-            p.setTenPhieu(details.getTenPhieu());
-            p.setLoaiGiamGia(details.getLoaiGiamGia());
-            p.setGiaTriGiam(details.getGiaTriGiam());
-            p.setGiaTriDonHangToiThieu(details.getGiaTriDonHangToiThieu());
-            p.setGiaTriGiamToiDa(details.getGiaTriGiamToiDa());
-            p.setSoLuong(details.getSoLuong());
-            p.setNgayBatDau(details.getNgayBatDau());
-            p.setNgayKetThuc(details.getNgayKetThuc());
-            p.setTrangThai(details.getTrangThai());
-            return phieuGiamGiaRepository.save(p);
+            p.setMaPhieu(entityDetails.getMaPhieu());
+            p.setTenPhieu(entityDetails.getTenPhieu());
+            p.setLoaiGiamGia(entityDetails.getLoaiGiamGia());
+            p.setGiaTriGiam(entityDetails.getGiaTriGiam());
+            p.setGiaTriDonHangToiThieu(entityDetails.getGiaTriDonHangToiThieu());
+            p.setGiaTriGiamToiDa(entityDetails.getGiaTriGiamToiDa());
+            p.setSoLuong(entityDetails.getSoLuong());
+            p.setNgayBatDau(entityDetails.getNgayBatDau());
+            p.setNgayKetThuc(entityDetails.getNgayKetThuc());
+            p.setTrangThai(entityDetails.getTrangThai());
+            PhieuGiamGia saved = phieuGiamGiaRepository.save(p);
+            return PhieuGiamGiaMapper.toDTO(saved);
         }).orElseThrow(() -> new RuntimeException("PhieuGiamGia not found with id " + id));
     }
 

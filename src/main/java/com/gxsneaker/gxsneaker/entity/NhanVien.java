@@ -25,7 +25,7 @@ public class NhanVien {
     @Column(name = "ma_nhan_vien")
     private String maNhanVien;
 
-    @Column(name = "ho_ten")
+    @Column(name = "ho_ten", columnDefinition = "NVARCHAR(255)")
     private String hoTen;
 
     private String email;

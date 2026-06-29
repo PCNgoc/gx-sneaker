@@ -1,6 +1,8 @@
 package com.gxsneaker.gxsneaker.service.impl;
 
+import com.gxsneaker.gxsneaker.dto.KhachHangDTO;
 import com.gxsneaker.gxsneaker.entity.KhachHang;
+import com.gxsneaker.gxsneaker.mapper.KhachHangMapper;
 import com.gxsneaker.gxsneaker.repository.KhachHangRepository;
 import com.gxsneaker.gxsneaker.service.KhachHangService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,27 +21,31 @@ public class KhachHangServiceImpl implements KhachHangService {
     private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
     @Override
-    public List<KhachHang> getAllKhachHang() {
-        return khachHangRepository.findAll();
+    public List<KhachHangDTO> getAllKhachHang() {
+        return khachHangRepository.findAll().stream()
+                .map(KhachHangMapper::toDTO)
+                .toList();
     }
 
     @Override
-    public Optional<KhachHang> getKhachHangById(Integer id) {
-        return khachHangRepository.findById(id);
+    public Optional<KhachHangDTO> getKhachHangById(Integer id) {
+        return khachHangRepository.findById(id).map(KhachHangMapper::toDTO);
     }
 
     @Override
-    public KhachHang createKhachHang(KhachHang khachHang) {
-        if (khachHang.getEmail() != null && !khachHang.getEmail().trim().isEmpty()) {
-            if (khachHangRepository.findByEmail(khachHang.getEmail().trim()).isPresent()) {
+    public KhachHangDTO createKhachHang(KhachHangDTO khachHangDTO) {
+        if (khachHangDTO.getEmail() != null && !khachHangDTO.getEmail().trim().isEmpty()) {
+            if (khachHangRepository.findByEmail(khachHangDTO.getEmail().trim()).isPresent()) {
                 throw new RuntimeException("Email này đã được sử dụng bởi khách hàng khác!");
             }
         }
-        if (khachHang.getSoDienThoai() != null && !khachHang.getSoDienThoai().trim().isEmpty()) {
-            if (khachHangRepository.findBySoDienThoai(khachHang.getSoDienThoai().trim()).isPresent()) {
+        if (khachHangDTO.getSoDienThoai() != null && !khachHangDTO.getSoDienThoai().trim().isEmpty()) {
+            if (khachHangRepository.findBySoDienThoai(khachHangDTO.getSoDienThoai().trim()).isPresent()) {
                 throw new RuntimeException("Số điện thoại này đã được sử dụng bởi khách hàng khác!");
             }
         }
+
+        KhachHang khachHang = KhachHangMapper.toEntity(khachHangDTO);
 
         long count = khachHangRepository.count() + 1;
         khachHang.setMaKhachHang(String.format("KH%03d", count));
@@ -52,11 +58,12 @@ public class KhachHangServiceImpl implements KhachHangService {
         if (khachHang.getDaXacThuc() == null) {
             khachHang.setDaXacThuc(true);
         }
-        return khachHangRepository.save(khachHang);
+        KhachHang saved = khachHangRepository.save(khachHang);
+        return KhachHangMapper.toDTO(saved);
     }
 
     @Override
-    public KhachHang updateKhachHang(Integer id, KhachHang khachHangDetails) {
+    public KhachHangDTO updateKhachHang(Integer id, KhachHangDTO khachHangDetails) {
         return khachHangRepository.findById(id).map(khachHang -> {
             if (khachHangDetails.getEmail() != null && !khachHangDetails.getEmail().trim().isEmpty()) {
                 Optional<KhachHang> existingEmail = khachHangRepository.findByEmail(khachHangDetails.getEmail().trim());
@@ -78,7 +85,8 @@ public class KhachHangServiceImpl implements KhachHangService {
             khachHang.setGioiTinh(khachHangDetails.getGioiTinh());
             khachHang.setNgaySinh(khachHangDetails.getNgaySinh());
             khachHang.setTrangThai(khachHangDetails.getTrangThai());
-            return khachHangRepository.save(khachHang);
+            KhachHang saved = khachHangRepository.save(khachHang);
+            return KhachHangMapper.toDTO(saved);
         }).orElseThrow(() -> new RuntimeException("KhachHang not found with id " + id));
     }
 

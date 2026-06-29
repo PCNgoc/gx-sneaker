@@ -1,8 +1,10 @@
 package com.gxsneaker.gxsneaker.service.impl;
 
+import com.gxsneaker.gxsneaker.dto.PhieuGiamGiaKhachHangDTO;
 import com.gxsneaker.gxsneaker.entity.KhachHang;
 import com.gxsneaker.gxsneaker.entity.PhieuGiamGia;
 import com.gxsneaker.gxsneaker.entity.PhieuGiamGiaKhachHang;
+import com.gxsneaker.gxsneaker.mapper.PhieuGiamGiaKhachHangMapper;
 import com.gxsneaker.gxsneaker.repository.KhachHangRepository;
 import com.gxsneaker.gxsneaker.repository.PhieuGiamGiaKhachHangRepository;
 import com.gxsneaker.gxsneaker.repository.PhieuGiamGiaRepository;
@@ -27,14 +29,15 @@ public class PhieuGiamGiaKhachHangServiceImpl implements PhieuGiamGiaKhachHangSe
     private PhieuGiamGiaRepository phieuGiamGiaRepository;
 
     @Override
-    public List<PhieuGiamGiaKhachHang> getVouchersByKhachHangId(Integer khachHangId) {
+    public List<PhieuGiamGiaKhachHangDTO> getVouchersByKhachHangId(Integer khachHangId) {
         return phieuGiamGiaKhachHangRepository.findAll().stream()
                 .filter(p -> p.getKhachHang() != null && p.getKhachHang().getId().equals(khachHangId))
+                .map(PhieuGiamGiaKhachHangMapper::toDTO)
                 .collect(Collectors.toList());
     }
 
     @Override
-    public PhieuGiamGiaKhachHang assignVoucherToKhachHang(Integer khachHangId, Integer phieuGiamGiaId) {
+    public PhieuGiamGiaKhachHangDTO assignVoucherToKhachHang(Integer khachHangId, Integer phieuGiamGiaId) {
         KhachHang khachHang = khachHangRepository.findById(khachHangId)
                 .orElseThrow(() -> new RuntimeException("KhachHang not found with id " + khachHangId));
 
@@ -47,19 +50,21 @@ public class PhieuGiamGiaKhachHangServiceImpl implements PhieuGiamGiaKhachHangSe
                 .daSuDung(false)
                 .build();
 
-        return phieuGiamGiaKhachHangRepository.save(pggh);
+        PhieuGiamGiaKhachHang saved = phieuGiamGiaKhachHangRepository.save(pggh);
+        return PhieuGiamGiaKhachHangMapper.toDTO(saved);
     }
 
     @Override
-    public PhieuGiamGiaKhachHang markAsUsed(Integer id) {
+    public PhieuGiamGiaKhachHangDTO markAsUsed(Integer id) {
         return phieuGiamGiaKhachHangRepository.findById(id).map(p -> {
             p.setDaSuDung(true);
-            return phieuGiamGiaKhachHangRepository.save(p);
+            PhieuGiamGiaKhachHang saved = phieuGiamGiaKhachHangRepository.save(p);
+            return PhieuGiamGiaKhachHangMapper.toDTO(saved);
         }).orElseThrow(() -> new RuntimeException("PhieuGiamGiaKhachHang not found with id " + id));
     }
 
     @Override
-    public Optional<PhieuGiamGiaKhachHang> getById(Integer id) {
-        return phieuGiamGiaKhachHangRepository.findById(id);
+    public Optional<PhieuGiamGiaKhachHangDTO> getById(Integer id) {
+        return phieuGiamGiaKhachHangRepository.findById(id).map(PhieuGiamGiaKhachHangMapper::toDTO);
     }
 }
