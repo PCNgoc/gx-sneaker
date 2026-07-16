@@ -1,5 +1,6 @@
 package com.gxsneaker.gxsneaker.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
@@ -20,7 +21,17 @@ public class HoaDon {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "id_khach_hang")
     private Long idKhachHang;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "id_khach_hang",
+            insertable = false,
+            updatable = false
+    )
+    @JsonIgnore
+    private KhachHang khachHang;
 
     private Long idNhanVien;
 
@@ -45,6 +56,8 @@ public class HoaDon {
     private String tenNguoiNhan;
 
     private String soDienThoaiNguoiNhan;
+    @Column(name = "dia_chi_nguoi_nhan")
+    private String diaChiNguoiNhan;
 
     private String emailNguoiNhan;
 

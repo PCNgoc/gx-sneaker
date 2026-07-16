@@ -197,45 +197,118 @@
           </div>
 
           <div class="product-table-wrapper">
-            <table class="table table-borderless align-middle">
+
+            <table class="table align-middle mb-0">
               <thead class="table-light">
               <tr>
-                <th>Sản phẩm</th>
-                <th class="text-center">Size/Màu</th>
-                <th class="text-center">Số lượng</th>
+                <th style="width:45%">Sản phẩm</th>
+                <th class="text-center">Size/màu</th>
+                <th class="text-center">SL</th>
                 <th class="text-end">Đơn giá</th>
                 <th class="text-end">Thành tiền</th>
               </tr>
               </thead>
-              <tbody>
-              <tr v-for="item in chiTietList" :key="item.id">
-                <td>
-                  <div class="d-flex align-items-center">
-                    <div class="product-img-mini">GX</div>
-                    <div class="ms-3">
-                      <div class="fw-bold text-dark">
-                        {{ item.chiTietSanPham?.sanPham?.tenSanPham || 'Giày Sneaker Cao Cấp GX' }}
-                      </div>
-                      <small class="text-muted">Mã SKU: {{ item.chiTietSanPham?.maSku || 'SKU-UNKNOWN' }}</small>
-                    </div>
-                  </div>
-                </td>
-                <td class="text-center text-secondary">
-                  {{ item.chiTietSanPham?.kichCo || '41' }} / {{ item.chiTietSanPham?.mauSac || 'Đen' }}
-                </td>
-                <td class="text-center fw-bold">x{{ item.soLuong }}</td>
-                <td class="text-end text-secondary">{{ formatMoney(item.donGia) }}</td>
-                <td class="text-end fw-bold text-danger">{{ formatMoney(item.soLuong * item.donGia) }}</td>
-              </tr>
-              <tr v-if="chiTietList.length === 0">
-                <td colspan="5" class="text-center py-4 text-muted">
-                  Đang tải dữ liệu sản phẩm chi tiết...
-                </td>
-              </tr>
-              </tbody>
-            </table>
-          </div>
 
+              <tbody>
+
+              <tr
+                v-for="item in chiTietList"
+                :key="item.chiTietSanPhamId"
+              >
+                <!-- Sản phẩm -->
+                <td>
+
+                  <div class="d-flex align-items-center">
+
+                    <img
+
+                      :src="`/images/${item.image}`"
+                      width="80"
+                      class="product-image"
+                      @error="$event.target.src='/default-shoe.png'"
+                    >
+
+                    <div class="ms-3">
+
+                      <div class="fw-bold fs-6">
+                        {{ item.productName }}
+                      </div>
+
+                      <div class="text-muted small">
+                        SKU #{{ item.chiTietSanPhamId }}
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                </td>
+
+                <!-- Size màu -->
+                <td class="text-center">
+
+                <span class="badge-size">
+                  {{ item.size }}
+                </span>
+
+                  <span class="badge-color ms-2">
+                  {{ item.color }}
+                  </span>
+
+                </td>
+
+                <!-- Số lượng -->
+
+                <td>{{ item.quantity }}</td>
+                <!-- Đơn giá -->
+                <td class="text-end text-secondary fw-semibold">
+                  {{ formatMoney(item.price) }}
+                </td>
+
+                <!-- Thành tiền -->
+                <td class="text-end">
+
+        <span class="fw-bold text-danger fs-5">
+          {{ formatMoney(item.total) }}
+        </span>
+
+                </td>
+
+              </tr>
+
+              <tr v-if="chiTietList.length===0">
+                <td colspan="5" class="text-center py-5 text-muted">
+                  Không có sản phẩm
+                </td>
+              </tr>
+
+              </tbody>
+
+              <!-- Footer -->
+              <tfoot
+                v-if="chiTietList.length"
+                class="table-light"
+              >
+              <tr>
+
+                <td colspan="4" class="text-end fw-bold fs-5">
+                  Tổng tiền hàng
+                </td>
+
+                <td class="text-end">
+
+        <span class="text-danger fw-bold fs-4">
+          {{ formatMoney(selectedHoaDon?.tongTien) }}
+        </span>
+
+                </td>
+
+              </tr>
+              </tfoot>
+
+            </table>
+
+          </div>
 
           <div class="history-section mt-4">
             <h5 class="fw-bold mb-3">
@@ -279,9 +352,16 @@
         <div class="modal-footer-pro">
           <div class="total-section">
             <span class="text-muted me-2">TỔNG CỘNG:</span>
-            <span class="total-price">{{ formatMoney(selectedHoaDon?.tongTienThanhToan) }}</span>
+            <span class="total-price">
+      {{ formatMoney(selectedHoaDon?.tongTien) }}
+    </span>
           </div>
-          <button @click="closeModal" class="btn btn-dark px-5 fw-bold rounded-3">ĐÓNG</button>
+
+          <button
+            @click="closeModal"
+            class="btn btn-dark px-5 fw-bold rounded-3">
+            ĐÓNG
+          </button>
         </div>
 
       </div>
@@ -337,47 +417,36 @@ const updateStatus = async (id, trangThaiMoi) => {
 
 
 const openDetailModal = async (hd) => {
-  selectedHoaDon.value = hd
-  showModal.value = true
-
   try {
-    const response = await axios.get('http://localhost:8080/api/hoa-don-chi-tiet')
-    chiTietList.value = response.data.filter(item => item.hoaDon?.id === hd.id || item.idHoaDon === hd.id)
-  } catch (error) {
-    console.error('Lỗi khi tải chi tiết hóa đơn:', error)
-  }
+    // Lấy chi tiết hóa đơn
+    const detailResponse = await axios.get(
+      `http://localhost:8080/api/hoa-don/${hd.id}`
+    )
 
-  try {
+    // API trả về:
+    // {
+    //   id,
+    //   maHoaDon,
+    //   ...
+    //   items:[...]
+    // }
+
+    selectedHoaDon.value = detailResponse.data
+    chiTietList.value = detailResponse.data.items || []
+
+    // Lấy lịch sử
     const historyResponse = await axios.get(
       `http://localhost:8080/api/hoa-don/${hd.id}/history`
     )
 
     lichSuList.value = historyResponse.data
+
+    // Mở modal
+    showModal.value = true
+
   } catch (error) {
-    console.error("Lỗi tải lịch sử:", error)
+    console.error("Lỗi khi tải chi tiết hóa đơn:", error)
   }
-  const openDetailModal = async (hd) => {
-    selectedHoaDon.value = hd
-
-    try {
-      const detailResponse = await axios.get(
-        `http://localhost:8080/api/hoa-don/${hd.id}`
-      )
-
-      chiTietList.value = detailResponse.data
-
-      const historyResponse = await axios.get(
-        `http://localhost:8080/api/hoa-don/${hd.id}/history`
-      )
-
-      lichSuList.value = historyResponse.data
-
-      showModal.value = true
-    } catch (error) {
-      console.error(error)
-    }
-  }
-
 }
 
 const closeModal = () => {
@@ -386,6 +455,7 @@ const closeModal = () => {
   chiTietList.value = []
   lichSuList.value = []
 }
+
 
 const handleSearch = () => { loadHoaDon(searchMaHD.value, searchStatus.value) }
 const handleReset = () => { searchMaHD.value = ''; searchStatus.value = ''; loadHoaDon() }
@@ -541,15 +611,58 @@ onMounted(() => { loadHoaDon() })
   font-size: 14.5px;
 }
 
-.product-table-wrapper {
-  margin-top: 24px;
+.product-image{
+  width:72px;
+  height:72px;
+  object-fit:cover;
+  border-radius:14px;
+  border:1px solid #ececec;
+  background:#fff;
+  padding:4px;
+  transition:.25s;
 }
 
-.product-img-mini {
-  width: 45px; height: 45px;
-  background: #1a1a1a; color: #ffffff;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 8px; font-weight: 800; font-size: 11px;
+.product-image:hover{
+  transform:scale(1.05);
+}
+
+.product-table-wrapper{
+  margin-top: 24px;
+  border:1px solid #ececec;
+  border-radius:14px;
+  overflow:hidden;
+  background:#fff;
+
+}
+
+.product-table-wrapper table{
+  margin:0;
+}
+
+.product-table-wrapper th{
+  font-size:14px;
+  font-weight:700;
+  color:#6b7280;
+  text-transform:uppercase;
+  letter-spacing:.5px;
+  padding:16px;
+}
+
+.product-table-wrapper td{
+  vertical-align:middle;
+  padding:20px 16px;
+}
+
+.product-table-wrapper tbody tr{
+  transition:.25s;
+}
+
+.product-table-wrapper tbody tr:hover{
+  background:#f8fafc;
+}
+
+tfoot td{
+  padding:18px !important;
 }
 
 .modal-footer-pro {
@@ -561,10 +674,11 @@ onMounted(() => { loadHoaDon() })
   background-color: #fafafa;
 }
 
-.total-price {
-  font-size: 28px;
-  font-weight: 900;
-  color: #e04646;
+.total-price{
+  font-size:34px;
+  font-weight:900;
+  color:#ef4444;
+  letter-spacing:.5px;
 }
 
 .animate-slide-up {
@@ -618,8 +732,12 @@ onMounted(() => { loadHoaDon() })
 }
 
 
-.history-section {
-  margin-top: 30px;
+.history-section{
+  margin-top:32px;
+  padding:20px;
+  border:1px solid #ececec;
+  border-radius:14px;
+  background:#fff;
 }
 
 .history-item {
@@ -705,6 +823,24 @@ onMounted(() => { loadHoaDon() })
   margin-top: 20px;
   margin-bottom: 20px;
   padding-left: 15px;
+}
+
+.badge-size{
+  background:#eff6ff;
+  color:#2563eb;
+  border:1px solid #bfdbfe;
+  padding:6px 10px;
+  border-radius:8px;
+  font-weight:600;
+}
+
+.badge-color{
+  background:#f3f4f6;
+  color:#374151;
+  border:1px solid #e5e7eb;
+  padding:6px 10px;
+  border-radius:8px;
+  font-weight:600;
 }
 
 .btn-export-lg {

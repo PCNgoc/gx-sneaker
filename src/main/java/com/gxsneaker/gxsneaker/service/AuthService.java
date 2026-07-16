@@ -274,7 +274,15 @@ public class AuthService {
         }
 
         String role =
-                nv.get().getPhanQuyen().getMaQuyen();
+                nv.get().getPhanQuyen()
+                        .getMaQuyen()
+                        .toUpperCase();
+
+        System.out.println("TEN QUYEN = "
+                + nv.get().getPhanQuyen().getTenQuyen());
+
+        System.out.println("ROLE LOGIN = "
+                + role);
 
         String token =
                 jwtService.generateToken(
@@ -282,14 +290,15 @@ public class AuthService {
                         role
                 );
 
-        return new AdminLoginResponse(
-                nv.get().getId(),
-                nv.get().getMaNhanVien(),
-                nv.get().getHoTen(),
-                nv.get().getEmail(),
-                role,
-                token,
-                "Đăng nhập thành công"
-        );
+        return AdminLoginResponse.builder()
+                .id(nv.get().getId())
+                .maNhanVien(nv.get().getMaNhanVien())
+                .hoTen(nv.get().getHoTen())
+                .email(nv.get().getEmail())
+                .role(role)
+                .token(token)
+                .avatar(nv.get().getAnhDaiDien())
+                .message("Đăng nhập thành công")
+                .build();
     }
 }

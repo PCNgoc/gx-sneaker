@@ -1,15 +1,14 @@
 <script setup>
 import { ref, computed, onMounted } from "vue"
+import { datHang, apDungMaGiamGia } from "@/services/HoaDonService"
 import { useRouter } from "vue-router"
 import { useCart } from "@/composables/useCart"
 import { getByKhachHangId as getAddresses } from "@/services/diaChiService"
-import { getByMa, getAll } from "@/services/phieuGiamGiaService"
 
 const router = useRouter()
 const { fetchCartCount } = useCart()
 
 const checkoutItems = ref([])
-const appliedVoucher = ref(null)
 const isFromCart = ref(false)
 const savedAddresses = ref([])
 
@@ -18,441 +17,595 @@ const phone = ref("")
 const address = ref("")
 const note = ref("")
 
+const paymentMethod = ref("COD")
 const shipFee = ref(30000)
+const loading = ref(false)
+const qrConfirmed = ref(false)
 
-// Voucher states
-const voucherCode = ref("")
-const voucherError = ref("")
-const voucherSuccess = ref("")
-const availableVouchers = ref([])
-const showVouchersList = ref(false)
-const currentPage = ref(1)
-const pageSize = 2
+const couponCode = ref("")
+const appliedCoupon = ref(null)
+const discountAmount = ref(0)
+const couponLoading = ref(false)
 
-const formatMoneyCompact = (value) => {
-  if (!value) return "0"
-  if (value >= 1000000) {
-    return (value / 1000000).toFixed(0) + "M"
-  }
-  if (value >= 1000) {
-    return (value / 1000).toFixed(0) + "K"
-  }
-  return value
+const bankInfo = {
+  bankId: "MB",
+  accountNo: "2601200488888",
+  accountName: "NGUYEN VAN LUAN",
 }
 
-const selectVoucher = (code) => {
-  voucherCode.value = code
-  applyVoucher()
-}
+const transferContent = computed(() => {
+  const phoneText = phone.value.trim() || "KHACHHANG"
+  return `GX${phoneText}`
+})
 
-const removeVoucher = () => {
-  appliedVoucher.value = null
-  voucherCode.value = ""
-  voucherSuccess.value = ""
-  voucherError.value = ""
-}
+const qrUrl = computed(() => {
+  const amount = Number(finalTotal.value || 0)
+  const addInfo = encodeURIComponent(transferContent.value)
+  const accountName = encodeURIComponent(bankInfo.accountName)
 
-const applyVoucher = async () => {
-  voucherError.value = ""
-  voucherSuccess.value = ""
-  if (!voucherCode.value.trim()) {
-    voucherError.value = "Vui lòng nhập mã giảm giá"
-    return
-  }
-  
-  try {
-    const res = await getByMa(voucherCode.value.trim())
-    const voucher = res.data
-    
-    if (!voucher || !voucher.trangThai) {
-      voucherError.value = "Mã giảm giá không hợp lệ hoặc đã hết hạn"
-      return
-    }
-    
-    // Check minimum order value
-    if (totalMoney.value < voucher.giaTriDonHangToiThieu) {
-      voucherError.value = `Đơn hàng tối thiểu phải từ ${formatMoney(voucher.giaTriDonHangToiThieu)} để sử dụng mã này`
-      return
-    }
-    
-    appliedVoucher.value = voucher
-    voucherSuccess.value = `Áp dụng mã ${voucher.maPhieu} thành công!`
-  } catch (err) {
-    voucherError.value = "Mã giảm giá không tồn tại"
-    appliedVoucher.value = null
-  }
-}
-
-const selectAddress = (addr) => {
-  fullName.value = addr.hoTenNguoiNhan || ""
-  phone.value = addr.soDienThoai || ""
-  address.value = `${addr.diaChiChiTiet}, ${addr.phuongXa}, ${addr.tinhThanh}`
-}
+  return `https://img.vietqr.io/image/${bankInfo.bankId}-${bankInfo.accountNo}-compact2.png?amount=${amount}&addInfo=${addInfo}&accountName=${accountName}`
+})
 
 const formatMoney = (value) => {
-  if (!value) return "0 đ"
-  return Number(value).toLocaleString("vi-VN") + " đ"
+  return Number(value || 0).toLocaleString("vi-VN") + " đ"
+}
+
+const getCurrentUser = () => {
+  try {
+    const userData = localStorage.getItem("user")
+    return userData ? JSON.parse(userData) : null
+  } catch (e) {
+    console.error("Lỗi parse user:", e)
+    return null
+  }
 }
 
 onMounted(async () => {
-  // Load user info from localStorage if available to prefill
-  const userData = localStorage.getItem("user")
-  if (userData) {
-    const parsedUser = JSON.parse(userData)
-    fullName.value = parsedUser.hoTen || ""
-    phone.value = parsedUser.soDienThoai || ""
-    
-    // Fetch saved addresses
-    if (parsedUser.id) {
+  const user = getCurrentUser()
+
+  if (user) {
+    fullName.value = user.hoTen || user.fullName || ""
+    phone.value = user.soDienThoai || user.phone || ""
+
+    if (user.id) {
       try {
-        const res = await getAddresses(parsedUser.id)
+        const res = await getAddresses(user.id)
         savedAddresses.value = res.data || []
-      } catch (err) {
-        console.error("Lỗi tải danh sách địa chỉ đã lưu:", err)
+      } catch (e) {
+        console.error("Lỗi tải địa chỉ:", e)
       }
     }
   }
 
-  // Load checkout details
-  const cartCheckout = JSON.parse(localStorage.getItem("checkoutData"))
-  if (cartCheckout) {
-    isFromCart.value = true
-    checkoutItems.value = cartCheckout.items || []
-    appliedVoucher.value = cartCheckout.appliedVoucher
-  } else {
-    const buyNowItem = JSON.parse(localStorage.getItem("buyNowProduct"))
-    if (buyNowItem) {
-      isFromCart.value = false
-      checkoutItems.value = [buyNowItem]
-      appliedVoucher.value = null
-    }
-  }
+  const cartCheckout = localStorage.getItem("checkoutData")
+  const buyNowData = localStorage.getItem("buyNowProduct")
 
-  // Load vouchers list
-  try {
-    const voucherRes = await getAll()
-    const now = new Date()
-    availableVouchers.value = (voucherRes.data || []).filter(v => {
-      const isStatusActive = v.trangThai === true
-      const hasQty = v.soLuong === null || v.soLuong > 0
-      const isStarted = !v.ngayBatDau || new Date(v.ngayBatDau) <= now
-      const isNotExpired = !v.ngayKetThuc || new Date(v.ngayKetThuc) >= now
-      return isStatusActive && hasQty && isStarted && isNotExpired
-    })
-  } catch (vErr) {
-    console.error("Lỗi khi tải danh sách voucher:", vErr)
+  if (cartCheckout) {
+    const parsed = JSON.parse(cartCheckout)
+    isFromCart.value = true
+    checkoutItems.value = parsed.items || []
+  } else if (buyNowData) {
+    isFromCart.value = false
+    checkoutItems.value = [JSON.parse(buyNowData)]
+  } else {
+    alert("Không có sản phẩm để thanh toán")
+    router.push("/products")
   }
 })
+
+const getItemPrice = (item) => {
+  return Number(
+    item?.price ||
+    item?.giaBan ||
+    item?.donGia ||
+    item?.gia ||
+    0
+  )
+}
+
+const getItemQuantity = (item) => {
+  return Number(
+    item?.quantity ||
+    item?.soLuong ||
+    1
+  )
+}
 
 const totalMoney = computed(() => {
   return checkoutItems.value.reduce((sum, item) => {
-    return sum + (Number(item.price) * Number(item.quantity))
+    return sum + getItemPrice(item) * getItemQuantity(item)
   }, 0)
 })
 
-const discountAmount = computed(() => {
-  if (!appliedVoucher.value) return 0
-  const v = appliedVoucher.value
-  if (v.loaiGiamGia) {
-    let calc = (totalMoney.value * v.giaTriGiam) / 100
-    if (v.giaTriGiamToiDa > 0 && calc > v.giaTriGiamToiDa) {
-      calc = v.giaTriGiamToiDa
-    }
-    return calc
-  } else {
-    return v.giaTriGiam
-  }
-})
-
 const finalTotal = computed(() => {
-  const total = totalMoney.value - discountAmount.value + shipFee.value
-  return total < 0 ? 0 : total
+  return Math.max(totalMoney.value - discountAmount.value + shipFee.value, 0)
 })
 
-const getPotentialDiscount = (v, total) => {
-  if (v.loaiGiamGia) {
-    let calc = (total * v.giaTriGiam) / 100
-    if (v.giaTriGiamToiDa > 0 && calc > v.giaTriGiamToiDa) {
-      calc = v.giaTriGiamToiDa
-    }
-    return calc
-  }
-  return v.giaTriGiam
+const selectAddress = (addr) => {
+  fullName.value =
+    addr.hoTenNguoiNhan ||
+    addr.tenNguoiNhan ||
+    addr.hoTen ||
+    ""
+
+  phone.value =
+    addr.soDienThoai ||
+    addr.phone ||
+    ""
+
+  const parts = [
+    addr.diaChiChiTiet,
+    addr.phuongXa,
+    addr.quanHuyen,
+    addr.tinhThanh,
+  ].filter(Boolean)
+
+  address.value = parts.join(", ")
 }
 
-const sortedVouchers = computed(() => {
-  const total = totalMoney.value
-  return [...availableVouchers.value].sort((a, b) => {
-    const discA = getPotentialDiscount(a, total)
-    const discB = getPotentialDiscount(b, total)
-    return discB - discA // highest discount first
-  })
-})
-
-const totalPages = computed(() => {
-  const count = sortedVouchers.value.length
-  return count > 0 ? Math.ceil(count / pageSize) : 1
-})
-
-const paginatedVouchers = computed(() => {
-  const start = (currentPage.value - 1) * pageSize
-  const end = start + pageSize
-  return sortedVouchers.value.slice(start, end)
-})
-
-const toggleVouchersList = () => {
-  showVouchersList.value = !showVouchersList.value
-  currentPage.value = 1
-}
-
-const placeOrder = async () => {
-  if (!fullName.value.trim()) {
-    alert("Vui lòng nhập họ tên")
+const applyCoupon = async () => {
+  if (!couponCode.value.trim()) {
+    alert("Vui lòng nhập mã giảm giá")
     return
+  }
+
+  if (!checkoutItems.value.length) {
+    alert("Không có sản phẩm để áp dụng mã")
+    return
+  }
+
+  try {
+    couponLoading.value = true
+
+    const res = await apDungMaGiamGia({
+      maPhieuGiamGia: couponCode.value.trim(),
+      tongTienHang: totalMoney.value,
+    })
+
+    appliedCoupon.value = res.data
+    discountAmount.value = Number(res.data.soTienGiam || 0)
+    couponCode.value = res.data.maPhieuGiamGia || couponCode.value.trim()
+
+    alert(res.data.message || "Áp dụng mã giảm giá thành công")
+  } catch (e) {
+    appliedCoupon.value = null
+    discountAmount.value = 0
+
+    alert(
+      e.response?.data?.message ||
+      e.response?.data ||
+      "Mã giảm giá không hợp lệ"
+    )
+  } finally {
+    couponLoading.value = false
+  }
+}
+
+const removeCoupon = () => {
+  couponCode.value = ""
+  appliedCoupon.value = null
+  discountAmount.value = 0
+}
+
+const getChiTietSanPhamId = (item) => {
+  return (
+    item?.detailId ||
+    item?.chiTietSanPhamId ||
+    item?.idChiTietSanPham ||
+    item?.id_chi_tiet_san_pham ||
+    item?.idChiTietSP ||
+    item?.chiTietSanPham?.id ||
+    item?.id
+  )
+}
+
+const getImageUrl = (image) => {
+  if (!image) return "/images/no-image.png"
+
+  if (image.startsWith("http")) return image
+
+  if (image.startsWith("/")) return image
+
+  return `/images/${image}`
+}
+
+const getItemImage = (item) => {
+  return (
+    item?.image ||
+    item?.hinhAnh ||
+    item?.anh ||
+    item?.imageUrl ||
+    item?.sanPham?.hinhAnh ||
+    ""
+  )
+}
+
+const getItemName = (item) => {
+  return (
+    item?.productName ||
+    item?.tenSanPham ||
+    item?.name ||
+    item?.sanPham?.tenSanPham ||
+    "Sản phẩm"
+  )
+}
+
+const getItemColor = (item) => {
+  return (
+    item?.color ||
+    item?.mauSac ||
+    item?.tenMau ||
+    item?.mau ||
+    "Không có"
+  )
+}
+
+const getItemSize = (item) => {
+  return (
+    item?.size ||
+    item?.kichCo ||
+    item?.tenSize ||
+    "Không có"
+  )
+}
+
+const validateForm = () => {
+  if (!fullName.value.trim()) {
+    alert("Vui lòng nhập họ tên người nhận")
+    return false
   }
 
   if (!phone.value.trim()) {
     alert("Vui lòng nhập số điện thoại")
-    return
+    return false
+  }
+
+  const phoneRegex = /^(0|\+84)[0-9]{9,10}$/
+  if (!phoneRegex.test(phone.value.trim())) {
+    alert("Số điện thoại không hợp lệ")
+    return false
   }
 
   if (!address.value.trim()) {
     alert("Vui lòng nhập địa chỉ nhận hàng")
+    return false
+  }
+
+  return true
+}
+
+const getCustomerId = () => {
+  const user = getCurrentUser()
+
+  return (
+    localStorage.getItem("userId") ||
+    localStorage.getItem("idKhachHang") ||
+    user?.id ||
+    1
+  )
+}
+
+const placeOrder = async () => {
+  if (!checkoutItems.value.length) {
+    alert("Không có sản phẩm")
     return
   }
 
-  console.log({
-    customerName: fullName.value,
-    phone: phone.value,
-    address: address.value,
-    note: note.value,
-    items: checkoutItems.value,
-    voucher: appliedVoucher.value,
-    discountAmount: discountAmount.value,
-    shipFee: shipFee.value,
-    totalMoney: finalTotal.value
-  })
+  if (!validateForm()) return
 
-  alert("Đặt hàng thành công! Xin cảm ơn quý khách.")
-  
-  // Clear checkout storage
-  localStorage.removeItem("checkoutData")
-  localStorage.removeItem("buyNowProduct")
-  
-  // If it was checked out from the database cart, we should clear the cart in DB
-  const userData = localStorage.getItem("user")
-  if (userData && isFromCart.value) {
-    try {
-      const parsedUser = JSON.parse(userData)
-      // Clear DB cart count using our composable/API
-      await fetchCartCount(parsedUser.id)
-    } catch (e) {
-      console.error(e)
-    }
+  if (paymentMethod.value === "QR" && !qrConfirmed.value) {
+    alert("Vui lòng xác nhận rằng bạn đã thực hiện chuyển khoản và chờ admin kiểm tra")
+    return
   }
 
-  router.push("/")
+  const invalidItem = checkoutItems.value.find(item => !getChiTietSanPhamId(item))
+
+  if (invalidItem) {
+    alert("Có sản phẩm bị thiếu ID chi tiết sản phẩm")
+    console.log("Sản phẩm thiếu ID chi tiết:", invalidItem)
+    return
+  }
+
+  try {
+    loading.value = true
+
+    const request = {
+      idKhachHang: Number(getCustomerId()),
+      tenNguoiNhan: fullName.value.trim(),
+      soDienThoai: phone.value.trim(),
+      diaChi: address.value.trim(),
+      ghiChu:
+        paymentMethod.value === "QR"
+          ? `[QR_MB_CHO_XAC_NHAN] ${note.value.trim()}`
+          : `[COD_CHO_XAC_NHAN] ${note.value.trim()}`,
+      maPhieuGiamGia: appliedCoupon.value
+        ? appliedCoupon.value.maPhieuGiamGia || couponCode.value.trim()
+        : null,
+      items: checkoutItems.value.map(item => ({
+        chiTietSanPhamId: Number(getChiTietSanPhamId(item)),
+        soLuong: getItemQuantity(item),
+      })),
+    }
+
+    console.log("===== REQUEST DAT HANG =====")
+    console.log(request)
+
+    const res = await datHang(request)
+
+    console.log("===== DAT HANG RESPONSE =====")
+    console.log(res.data)
+
+    localStorage.removeItem("buyNowProduct")
+    localStorage.removeItem("checkoutData")
+
+    if (isFromCart.value) {
+      const user = getCurrentUser()
+
+      if (user?.id) {
+        try {
+          await fetchCartCount(user.id)
+        } catch (e) {
+          console.error("Lỗi cập nhật số lượng giỏ hàng:", e)
+        }
+      }
+    }
+
+    router.push({
+      path: `/order-success/${res.data.id}`,
+      query: {
+        maHoaDon: res.data.maHoaDon,
+        payment: paymentMethod.value,
+      },
+    })
+  } catch (e) {
+    console.error(e)
+    console.log(e.response)
+    console.log(e.response?.data)
+
+    alert(
+      e.response?.data?.message ||
+      e.response?.data ||
+      "Đặt hàng thất bại"
+    )
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
 <template>
   <div class="checkout-page">
-    <h1>🛒 Thanh toán đơn hàng</h1>
+    <div class="checkout-header">
+      <button class="back-btn" @click="router.back()">
+        ← Quay lại
+      </button>
+
+      <div>
+        <h1>Thanh toán</h1>
+        <p>Hoàn tất thông tin để đặt hàng</p>
+      </div>
+    </div>
 
     <div class="checkout-wrapper">
-      <!-- Thông tin nhận hàng -->
-      <div class="customer-info">
-        <h2>Thông tin nhận hàng</h2>
-
-        <!-- Saved Address Picker -->
-        <div v-if="savedAddresses.length > 0" class="saved-addresses-picker">
-          <label class="picker-label">🔑 Chọn nhanh địa chỉ nhận hàng đã lưu:</label>
-          <div class="address-chips">
-            <button
-              v-for="addr in savedAddresses"
-              :key="addr.id"
-              type="button"
-              class="address-chip"
-              @click="selectAddress(addr)"
-            >
-              <strong>{{ addr.hoTenNguoiNhan }}</strong> - {{ addr.soDienThoai }}
-              <span class="chip-text">{{ addr.diaChiChiTiet }}, {{ addr.phuongXa }}, {{ addr.tinhThanh }}</span>
-            </button>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Họ và tên</label>
-          <input
-            v-model="fullName"
-            type="text"
-            placeholder="Nhập họ tên người nhận"
-          >
-        </div>
-
-        <div class="form-group">
-          <label>Số điện thoại</label>
-          <input
-            v-model="phone"
-            type="text"
-            placeholder="Nhập số điện thoại"
-          >
-        </div>
-
-        <div class="form-group">
-          <label>Địa chỉ nhận hàng</label>
-          <textarea
-            v-model="address"
-            rows="4"
-            placeholder="Nhập địa chỉ chi tiết (Số nhà, tên đường, phường/xã, quận/huyện, tỉnh/thành phố)"
-          />
-        </div>
-
-        <div class="form-group">
-          <label>Ghi chú</label>
-          <textarea
-            v-model="note"
-            rows="3"
-            placeholder="Ghi chú thêm cho shipper hoặc cửa hàng..."
-          />
-        </div>
-      </div>
-
-      <!-- Đơn hàng -->
-      <div class="order-summary">
-        <h2>Đơn hàng của bạn</h2>
-
-        <div class="product-list">
-          <div
-            v-for="(item, idx) in checkoutItems"
-            :key="idx"
-            class="product-item"
-          >
-            <img
-              :src="item.image ? `/images/${item.image}` : '/images/banner1.png'"
-              alt="Product Image"
-            >
-
-            <div class="product-info">
-              <h3>{{ item.productName }}</h3>
-              <p>Màu: <strong>{{ item.color }}</strong></p>
-              <p>Size: <strong>{{ item.size }}</strong></p>
-              <p>Số lượng: <strong>{{ item.quantity }}</strong></p>
-              <p>Giá: <strong>{{ formatMoney(item.price) }}</strong></p>
+      <div class="left-content">
+        <section class="card">
+          <div class="card-title">
+            <span class="step">1</span>
+            <div>
+              <h2>Thông tin nhận hàng</h2>
+              <p>Vui lòng nhập chính xác thông tin giao hàng</p>
             </div>
           </div>
-        </div>
 
-        <!-- Voucher Section in Checkout -->
-        <div class="voucher-section-checkout">
-          <h3>🎟️ Áp dụng Mã Giảm Giá</h3>
-          <div class="voucher-input-group">
-            <input v-model="voucherCode" placeholder="Nhập mã giảm giá..." @keyup.enter="applyVoucher" />
-            <button @click="applyVoucher">Áp dụng</button>
-          </div>
-          <p v-if="voucherError" class="voucher-error">{{ voucherError }}</p>
-          <p v-if="voucherSuccess" class="voucher-success">{{ voucherSuccess }}</p>
+          <div v-if="savedAddresses.length > 0" class="saved-addresses-picker">
+            <label class="picker-label">Chọn nhanh địa chỉ đã lưu</label>
 
-          <!-- Suggested Vouchers trigger line -->
-          <div v-if="availableVouchers.length > 0" class="voucher-suggest-trigger" @click="toggleVouchersList">
-            <span class="trigger-icon">💡</span>
-            <span class="trigger-text">
-              Bạn có <strong>{{ availableVouchers.length }}</strong> mã giảm giá khả dụng.
-              <span class="trigger-action">{{ showVouchersList ? 'Thu gọn' : 'Xem gợi ý' }}</span>
-            </span>
-            <span class="trigger-arrow" :class="{ 'rotated': showVouchersList }">▼</span>
-          </div>
-
-          <!-- Suggested Vouchers list below input (collapsible and paginated) -->
-          <div v-if="showVouchersList && paginatedVouchers.length > 0" class="suggested-vouchers-container">
-            <div class="vouchers-list-scroll">
-              <div 
-                v-for="v in paginatedVouchers" 
-                :key="v.id" 
-                class="voucher-suggest-card"
-                :class="{ 
-                  'eligible': totalMoney >= v.giaTriDonHangToiThieu, 
-                  'applied': appliedVoucher?.id === v.id 
-                }"
+            <div class="address-chips">
+              <button
+                v-for="addr in savedAddresses"
+                :key="addr.id"
+                type="button"
+                class="address-chip"
+                @click="selectAddress(addr)"
               >
-                <!-- Left ticket-like edge -->
-                <div class="voucher-card-left">
-                  <span class="voucher-percent">
-                    {{ v.loaiGiamGia ? `${v.giaTriGiam}%` : formatMoneyCompact(v.giaTriGiam) }}
-                  </span>
-                  <span class="voucher-off-lbl">GIẢM</span>
-                </div>
-                
-                <!-- Dotted divider -->
-                <div class="voucher-card-divider"></div>
-                
-                <!-- Right main content -->
-                <div class="voucher-card-right">
-                  <div class="voucher-header-info">
-                    <span class="voucher-code-badge">{{ v.maPhieu }}</span>
-                    <span v-if="appliedVoucher?.id === v.id" class="applied-badge">Đang áp dụng</span>
-                  </div>
-                  <p class="voucher-desc" :title="v.tenPhieu">{{ v.tenPhieu }}</p>
-                  <p class="voucher-min-spend">Đơn tối thiểu: {{ formatMoney(v.giaTriDonHangToiThieu) }}</p>
-                  
-                  <!-- Progress bar if not eligible yet -->
-                  <div v-if="totalMoney < v.giaTriDonHangToiThieu" class="spend-progress-bar">
-                    <div class="spend-progress-fill" :style="{ width: `${Math.min(100, (totalMoney / v.giaTriDonHangToiThieu) * 100)}%` }"></div>
-                    <span class="spend-progress-text">Mua thêm {{ formatMoney(v.giaTriDonHangToiThieu - totalMoney) }} để dùng</span>
-                  </div>
+                <strong>
+                  {{ addr.hoTenNguoiNhan || addr.tenNguoiNhan || addr.hoTen }}
+                </strong>
+                -
+                {{ addr.soDienThoai }}
 
-                  <div class="voucher-actions">
-                    <button 
-                      v-if="totalMoney >= v.giaTriDonHangToiThieu && appliedVoucher?.id !== v.id" 
-                      class="btn-apply-voucher" 
-                      @click="selectVoucher(v.maPhieu)"
-                    >
-                      Áp dụng
-                    </button>
-                    <button 
-                      v-else-if="appliedVoucher?.id === v.id" 
-                      class="btn-remove-applied-voucher" 
-                      @click="removeVoucher"
-                    >
-                      Hủy
-                    </button>
-                    <span v-else class="locked-voucher-lbl">Chưa đủ đ/k</span>
-                  </div>
-                </div>
+                <span class="chip-text">
+                  {{ addr.diaChiChiTiet }},
+                  {{ addr.phuongXa }},
+                  {{ addr.quanHuyen }},
+                  {{ addr.tinhThanh }}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Họ và tên người nhận <span>*</span></label>
+              <input
+                v-model="fullName"
+                type="text"
+                placeholder="Ví dụ: Nguyễn Văn A"
+              >
+            </div>
+
+            <div class="form-group">
+              <label>Số điện thoại <span>*</span></label>
+              <input
+                v-model="phone"
+                type="text"
+                placeholder="Ví dụ: 0987654321"
+              >
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Địa chỉ nhận hàng <span>*</span></label>
+            <textarea
+              v-model="address"
+              rows="4"
+              placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành phố"
+            />
+          </div>
+
+          <div class="form-group">
+            <label>Ghi chú</label>
+            <textarea
+              v-model="note"
+              rows="3"
+              placeholder="Ghi chú cho shop hoặc đơn vị vận chuyển"
+            />
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-title">
+            <span class="step">2</span>
+            <div>
+              <h2>Phương thức thanh toán</h2>
+              <p>Chọn hình thức thanh toán phù hợp</p>
+            </div>
+          </div>
+
+          <div class="payment-list">
+            <label
+              class="payment-item"
+              :class="{ active: paymentMethod === 'COD' }"
+            >
+              <input
+                v-model="paymentMethod"
+                type="radio"
+                value="COD"
+              >
+              <div class="payment-icon">💵</div>
+              <div>
+                <h3>Thanh toán khi nhận hàng</h3>
+                <p>Khách hàng thanh toán trực tiếp cho shipper khi nhận hàng.</p>
+              </div>
+            </label>
+
+            <label
+              class="payment-item"
+              :class="{ active: paymentMethod === 'QR' }"
+            >
+              <input
+                v-model="paymentMethod"
+                type="radio"
+                value="QR"
+              >
+              <div class="payment-icon">🏦</div>
+              <div>
+                <h3>Chuyển khoản MB Bank bằng QR</h3>
+                <p>Quét mã bằng app ngân hàng và chuyển khoản thật vào tài khoản shop.</p>
+              </div>
+            </label>
+          </div>
+
+          <div v-if="paymentMethod === 'QR'" class="qr-box">
+            <h3>Quét mã VietQR để thanh toán</h3>
+
+            <div class="qr-content">
+              <img
+                :src="qrUrl"
+                alt="QR thanh toán"
+                class="qr-image"
+              >
+
+              <div class="bank-detail">
+                <p>Ngân hàng: <strong>MB Bank</strong></p>
+                <p>Số tài khoản: <strong>{{ bankInfo.accountNo }}</strong></p>
+                <p>Chủ tài khoản: <strong>{{ bankInfo.accountName }}</strong></p>
+                <p>Số tiền: <strong class="money">{{ formatMoney(finalTotal) }}</strong></p>
+                <p>Nội dung CK: <strong>{{ transferContent }}</strong></p>
               </div>
             </div>
 
-            <!-- Pagination Controls -->
-            <div v-if="totalPages > 1" class="voucher-pagination">
-              <button 
-                :disabled="currentPage === 1" 
-                class="btn-page-nav" 
-                @click="currentPage--"
+            <label class="confirm-transfer">
+              <input
+                v-model="qrConfirmed"
+                type="checkbox"
               >
-                ◀
-              </button>
-              <span class="page-indicator">Trang {{ currentPage }} / {{ totalPages }}</span>
-              <button 
-                :disabled="currentPage === totalPages" 
-                class="btn-page-nav" 
-                @click="currentPage++"
-              >
-                ▶
-              </button>
+              Tôi đã thực hiện chuyển khoản và hiểu rằng đơn hàng sẽ chờ admin xác nhận
+            </label>
+          </div>
+        </section>
+      </div>
+
+      <aside class="order-summary">
+        <h2>Đơn hàng của bạn</h2>
+
+        <div
+          v-for="(item, index) in checkoutItems"
+          :key="index"
+          class="product-box"
+        >
+          <img
+            :src="getImageUrl(getItemImage(item))"
+            alt="Ảnh sản phẩm"
+          >
+
+          <div class="product-info">
+            <h3>{{ getItemName(item) }}</h3>
+
+            <div class="variant">
+              <span>Màu: <b>{{ getItemColor(item) }}</b></span>
+              <span>Size: <b>{{ getItemSize(item) }}</b></span>
+            </div>
+
+            <div class="quantity-price">
+              <span>x{{ getItemQuantity(item) }}</span>
+              <strong>{{ formatMoney(getItemPrice(item)) }}</strong>
             </div>
           </div>
         </div>
 
-        <hr>
+        <div class="coupon-box">
+          <label>Mã giảm giá</label>
+
+          <div class="coupon-input">
+            <input
+              v-model="couponCode"
+              type="text"
+              placeholder="Nhập mã giảm giá"
+              :disabled="!!appliedCoupon"
+              @keyup.enter="applyCoupon"
+            >
+
+            <button
+              v-if="!appliedCoupon"
+              type="button"
+              :disabled="couponLoading"
+              @click="applyCoupon"
+            >
+              {{ couponLoading ? "Đang kiểm tra..." : "Áp dụng" }}
+            </button>
+
+            <button
+              v-else
+              type="button"
+              class="btn-remove-coupon"
+              @click="removeCoupon"
+            >
+              Hủy
+            </button>
+          </div>
+
+          <p v-if="appliedCoupon" class="coupon-success">
+            Đã áp dụng: {{ appliedCoupon.maPhieuGiamGia }}
+            - giảm {{ formatMoney(discountAmount) }}
+          </p>
+        </div>
+
+        <div class="divider"></div>
 
         <div class="price-row">
           <span>Tạm tính</span>
           <strong>{{ formatMoney(totalMoney) }}</strong>
-        </div>
-
-        <div v-if="discountAmount > 0" class="price-row discount-row">
-          <span>Mã giảm giá áp dụng ({{ appliedVoucher?.maPhieu }})</span>
-          <strong class="discount-val">- {{ formatMoney(discountAmount) }}</strong>
         </div>
 
         <div class="price-row">
@@ -460,203 +613,149 @@ const placeOrder = async () => {
           <strong>{{ formatMoney(shipFee) }}</strong>
         </div>
 
-        <hr>
+        <div class="price-row">
+          <span>Giảm giá</span>
+          <strong class="discount-text">-{{ formatMoney(discountAmount) }}</strong>
+        </div>
+
+        <div class="divider"></div>
 
         <div class="price-row total-row">
-          <span>Tổng cộng</span>
-          <strong class="grand-total">{{ formatMoney(finalTotal) }}</strong>
+          <span>Tổng thanh toán</span>
+          <strong>{{ formatMoney(finalTotal) }}</strong>
         </div>
 
         <button
           class="btn-order"
+          :disabled="loading"
           @click="placeOrder"
         >
-          XÁC NHẬN ĐẶT HÀNG
+          {{
+            loading
+              ? "ĐANG XỬ LÝ..."
+              : paymentMethod === "QR"
+                ? "GỬI ĐƠN - CHỜ ADMIN XÁC NHẬN THANH TOÁN"
+                : "ĐẶT HÀNG - CHỜ XÁC NHẬN"
+          }}
         </button>
-      </div>
+
+        <p class="policy-text">
+          Bằng việc đặt hàng, bạn đồng ý với chính sách mua hàng của GX Sneaker.
+        </p>
+      </aside>
     </div>
   </div>
 </template>
 
 <style scoped>
 .checkout-page {
-  max-width: 1200px;
-  margin: 40px auto;
-  padding: 0 20px;
-  font-family: Inter, sans-serif;
+  min-height: 100vh;
+  padding: 40px 24px;
+  background:
+    radial-gradient(circle at top left, #fee2e2, transparent 30%),
+    linear-gradient(135deg, #f8fafc, #eef2ff);
 }
 
-.checkout-page h1 {
-  margin-bottom: 30px;
-  font-size: 32px;
+.checkout-header {
+  max-width: 1200px;
+  margin: 0 auto 28px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.back-btn {
+  border: none;
+  background: white;
+  color: #111827;
+  padding: 12px 18px;
+  border-radius: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+}
+
+.checkout-header h1 {
+  font-size: 38px;
   font-weight: 800;
-  color: #1e293b;
+  color: #111827;
+  margin: 0;
+}
+
+.checkout-header p {
+  margin-top: 4px;
+  color: #6b7280;
 }
 
 .checkout-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
   display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 30px;
+  grid-template-columns: minmax(0, 1.6fr) 430px;
+  gap: 28px;
+  align-items: flex-start;
 }
 
-.customer-info,
+.left-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.card,
 .order-summary {
-  background: #fff;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 24px;
   padding: 28px;
-  border-radius: 20px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(0, 0, 0, 0.04);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(15, 23, 42, 0.06);
 }
 
-.customer-info h2,
-.order-summary h2 {
-  font-size: 22px;
-  font-weight: 800;
-  color: #1e293b;
+.card-title {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
   margin-bottom: 24px;
 }
 
-.form-group {
-  margin-bottom: 20px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 600;
-  color: #475569;
-  font-size: 14px;
-}
-
-.form-group input,
-.form-group textarea {
-  width: 100%;
-  padding: 12px 16px;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  font-size: 14px;
-  font-family: inherit;
-  transition: all 0.3s;
-}
-
-.form-group input:focus,
-.form-group textarea:focus {
-  border-color: #64748b;
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.1);
-}
-
-.product-list {
-  max-height: 400px;
-  overflow-y: auto;
-  padding-right: 8px;
-}
-
-.product-item {
+.step {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+  border-radius: 50%;
   display: flex;
-  gap: 16px;
-  margin-bottom: 20px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.product-item:last-child {
-  border-bottom: none;
-  margin-bottom: 0;
-  padding-bottom: 0;
-}
-
-.product-item img {
-  width: 90px;
-  height: 90px;
-  object-fit: cover;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-}
-
-.product-info h3 {
-  font-size: 16px;
-  font-weight: 700;
-  color: #1e293b;
-  margin-bottom: 6px;
-}
-
-.product-info p {
-  margin-bottom: 4px;
-  font-size: 13px;
-  color: #64748b;
-}
-
-.price-row {
-  display: flex;
-  justify-content: space-between;
-  margin: 14px 0;
-  font-size: 15px;
-  color: #475569;
-}
-
-.discount-row {
-  color: #059669;
-  background: #ecfdf5;
-  padding: 8px 12px;
-  border-radius: 8px;
-}
-
-.discount-val {
-  color: #10b981;
-}
-
-.total-row {
-  font-size: 18px;
-  color: #1e293b;
-}
-
-.grand-total {
-  font-size: 24px;
-  color: #ef4444;
+  justify-content: center;
+  align-items: center;
   font-weight: 800;
 }
 
-.btn-order {
-  width: 100%;
-  margin-top: 20px;
-  padding: 16px;
-  border: none;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  color: white;
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 10px 25px rgba(239, 68, 68, 0.25);
-  transition: all 0.3s;
+.card-title h2,
+.order-summary h2 {
+  margin: 0;
+  font-size: 22px;
+  color: #111827;
 }
 
-.btn-order:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 15px 30px rgba(239, 68, 68, 0.35);
-}
-
-@media (max-width: 992px) {
-  .checkout-wrapper {
-    grid-template-columns: 1fr;
-  }
+.card-title p {
+  margin-top: 4px;
+  color: #6b7280;
+  font-size: 14px;
 }
 
 .saved-addresses-picker {
   margin-bottom: 24px;
-  background: #f8fafc;
   padding: 16px;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  background: #f9fafb;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
 }
 
 .picker-label {
   display: block;
-  font-weight: 700;
-  font-size: 14px;
-  color: #475569;
-  margin-bottom: 12px !important;
+  margin-bottom: 12px;
+  font-weight: 800;
+  color: #111827;
 }
 
 .address-chips {
@@ -666,444 +765,401 @@ const placeOrder = async () => {
 }
 
 .address-chip {
-  text-align: left;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  padding: 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
   width: 100%;
+  text-align: left;
+  border: 1px solid #e5e7eb;
+  background: white;
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  color: #374151;
+  transition: 0.2s;
 }
 
 .address-chip:hover {
-  border-color: #0ea5e9;
-  background: #f0f9ff;
-  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.05);
+  border-color: #dc2626;
+  background: #fef2f2;
 }
 
 .chip-text {
   display: block;
-  font-size: 13px;
-  color: #64748b;
   margin-top: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Voucher Apply Section in Checkout */
-.voucher-section-checkout {
-  background: #f8fafc;
-  padding: 16px;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  margin-top: 15px;
-  margin-bottom: 15px;
-}
-
-.voucher-section-checkout h3 {
-  font-size: 14px;
-  font-weight: 700;
-  color: #1e293b;
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.voucher-input-group {
-  display: flex;
-  gap: 8px;
-}
-
-.voucher-input-group input {
-  flex: 1;
-  padding: 8px 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
   font-size: 13px;
-  outline: none;
-  transition: all 0.2s;
-  background: #ffffff;
+  color: #6b7280;
+  line-height: 1.4;
 }
 
-.voucher-input-group input:focus {
-  border-color: #ef4444;
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
 }
 
-.voucher-input-group button {
-  background: #1e293b;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
+.form-group {
+  margin-bottom: 18px;
 }
 
-.voucher-input-group button:hover {
-  background: #ef4444;
-}
-
-.voucher-error {
-  color: #ef4444;
-  font-size: 12px;
-  margin-top: 8px;
-  font-weight: 600;
-}
-
-.voucher-success {
-  color: #10b981;
-  font-size: 12px;
-  margin-top: 8px;
-  font-weight: 600;
-}
-
-.suggested-vouchers-container {
-  margin-top: 15px;
-  border-top: 1px dashed #cbd5e1;
-  padding-top: 15px;
-}
-
-.suggested-title {
-  font-size: 13px;
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
   font-weight: 700;
-  color: #475569;
-  margin-bottom: 12px;
+  color: #374151;
 }
 
-.vouchers-list-scroll {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-height: 220px;
-  overflow-y: auto;
-  padding-right: 4px;
+.form-group label span {
+  color: #dc2626;
 }
 
-/* Custom Scrollbar */
-.vouchers-list-scroll::-webkit-scrollbar {
-  width: 5px;
-}
-.vouchers-list-scroll::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 4px;
-}
-.vouchers-list-scroll::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-
-.voucher-suggest-card {
-  display: flex;
-  background: #ffffff;
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
-  transition: all 0.3s ease;
-  position: relative;
-}
-
-.voucher-suggest-card::before,
-.voucher-suggest-card::after {
-  content: "";
-  position: absolute;
-  left: 24%;
-  width: 10px;
-  height: 10px;
-  background: #f8fafc; /* Match container bg */
-  border-radius: 50%;
-  z-index: 2;
-}
-.voucher-suggest-card::before {
-  top: -5px;
-  box-shadow: inset 0 -1px 1px rgba(0,0,0,0.05);
-}
-.voucher-suggest-card::after {
-  bottom: -5px;
-  box-shadow: inset 0 1px 1px rgba(0,0,0,0.05);
-}
-
-.voucher-suggest-card.applied {
-  border-color: #10b981;
-  background: #f0fdf4;
-}
-
-.voucher-suggest-card.applied::before,
-.voucher-suggest-card.applied::after {
-  background: #f8fafc;
-}
-
-.voucher-card-left {
-  width: 25%;
-  background: #cbd5e1;
-  color: #64748b;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  font-weight: 800;
-  padding: 10px;
-  min-height: 80px;
-  transition: all 0.3s ease;
-}
-
-.voucher-suggest-card.eligible .voucher-card-left {
-  background: linear-gradient(135deg, #ef4444, #f43f5e);
-  color: white;
-}
-
-.voucher-suggest-card.applied .voucher-card-left {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
-}
-
-.voucher-percent {
-  font-size: 16px;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
-}
-
-.voucher-off-lbl {
-  font-size: 9px;
-  opacity: 0.8;
-  letter-spacing: 1px;
-  margin-top: 2px;
-}
-
-.voucher-card-divider {
-  border-left: 2px dashed #e2e8f0;
-  margin: 0;
-  background: transparent;
-  z-index: 1;
-}
-
-.voucher-suggest-card.applied .voucher-card-divider {
-  border-left-color: #a7f3d0;
-}
-
-.voucher-card-right {
-  flex: 1;
-  padding: 10px 12px 10px 16px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.voucher-header-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-}
-
-.voucher-code-badge {
-  background: #f1f5f9;
-  color: #334155;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-weight: 700;
-  font-size: 12px;
-  border: 1px solid #e2e8f0;
-}
-
-.voucher-suggest-card.applied .voucher-code-badge {
-  background: #d1fae5;
-  color: #065f46;
-  border-color: #a7f3d0;
-}
-
-.applied-badge {
-  background: #10b981;
-  color: white;
-  font-size: 9px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 20px;
-}
-
-.voucher-desc {
-  font-size: 12px;
-  font-weight: 600;
-  color: #1e293b;
-  margin: 3px 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.voucher-min-spend {
-  font-size: 11px;
-  color: #64748b;
-  margin: 2px 0 6px 0;
-}
-
-.spend-progress-bar {
-  background: #e2e8f0;
-  height: 4px;
-  border-radius: 2px;
-  position: relative;
-  margin: 4px 0 8px 0;
-}
-
-.spend-progress-fill {
-  background: #f43f5e;
-  height: 100%;
-  border-radius: 2px;
-}
-
-.spend-progress-text {
-  position: absolute;
-  left: 0;
-  top: 6px;
-  font-size: 9px;
-  color: #ef4444;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.voucher-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 4px;
-}
-
-.btn-apply-voucher {
-  background: #1e293b;
-  color: white;
-  border: none;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-apply-voucher:hover {
-  background: #ef4444;
-  transform: scale(1.05);
-}
-
-.btn-remove-applied-voucher {
-  background: #fee2e2;
-  color: #ef4444;
-  border: 1px solid #fca5a5;
-  padding: 3px 10px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-remove-applied-voucher:hover {
-  background: #ef4444;
-  color: white;
-  border-color: #ef4444;
-}
-
-.locked-voucher-lbl {
-  font-size: 10px;
-  color: #94a3b8;
-  font-weight: 600;
-  background: #f1f5f9;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-/* Suggested Vouchers Trigger Line */
-.voucher-suggest-trigger {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  padding: 8px 12px;
-  border-radius: 8px;
-  margin-top: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  user-select: none;
-}
-
-.voucher-suggest-trigger:hover {
-  background: #dcfce7;
-  border-color: #86efac;
-}
-
-.trigger-icon {
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
   font-size: 15px;
+  outline: none;
+  transition: 0.2s;
+  background: #f9fafb;
 }
 
-.trigger-text {
-  flex: 1;
-  font-size: 12.5px;
-  color: #166534;
+.form-group input:focus,
+.form-group textarea:focus {
+  border-color: #ef4444;
+  background: white;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.08);
 }
 
-.trigger-action {
-  color: #059669;
-  text-decoration: underline;
-  margin-left: 6px;
-  font-weight: 700;
-}
-
-.trigger-arrow {
-  font-size: 10px;
-  color: #166534;
-  transition: transform 0.2s ease;
-}
-
-.trigger-arrow.rotated {
-  transform: rotate(180deg);
-}
-
-/* Pagination Controls */
-.voucher-pagination {
+.payment-list {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid #f1f5f9;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.btn-page-nav {
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #64748b;
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
+.payment-item {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
+  gap: 16px;
+  padding: 18px;
+  border: 2px solid #e5e7eb;
+  border-radius: 18px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: 0.2s;
+  background: #fff;
 }
 
-.btn-page-nav:hover:not(:disabled) {
-  background: #f1f5f9;
-  color: #1e293b;
-  border-color: #94a3b8;
+.payment-item.active {
+  border-color: #dc2626;
+  background: #fef2f2;
 }
 
-.btn-page-nav:disabled {
-  opacity: 0.4;
+.payment-item input {
+  margin-top: 6px;
+}
+
+.payment-icon {
+  font-size: 30px;
+}
+
+.payment-item h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  color: #111827;
+}
+
+.payment-item p {
+  margin: 0;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.qr-box {
+  margin-top: 22px;
+  padding: 22px;
+  border-radius: 20px;
+  background: #f8fafc;
+  border: 1px dashed #dc2626;
+}
+
+.qr-box h3 {
+  margin: 0 0 16px;
+  color: #111827;
+}
+
+.qr-content {
+  display: flex;
+  gap: 22px;
+  align-items: center;
+}
+
+.qr-image {
+  width: 220px;
+  height: 220px;
+  border-radius: 16px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  padding: 10px;
+}
+
+.bank-detail p {
+  margin: 8px 0;
+  color: #374151;
+}
+
+.bank-detail strong {
+  color: #111827;
+}
+
+.bank-detail .money {
+  color: #dc2626;
+  font-size: 20px;
+}
+
+.confirm-transfer {
+  margin-top: 18px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-weight: 700;
+  color: #111827;
+}
+
+.confirm-transfer input {
+  width: 18px;
+  height: 18px;
+}
+
+.order-summary {
+  position: sticky;
+  top: 24px;
+}
+
+.product-box {
+  display: flex;
+  gap: 16px;
+  margin-top: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.product-box:last-of-type {
+  border-bottom: none;
+}
+
+.product-box img {
+  width: 118px;
+  height: 118px;
+  object-fit: cover;
+  border-radius: 18px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.product-info {
+  flex: 1;
+}
+
+.product-info h3 {
+  margin: 0 0 10px;
+  font-size: 17px;
+  line-height: 1.35;
+  color: #111827;
+}
+
+.variant {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.quantity-price {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.quantity-price strong {
+  color: #dc2626;
+}
+
+.coupon-box {
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: 16px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+}
+
+.coupon-box label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.coupon-input {
+  display: flex;
+  gap: 10px;
+}
+
+.coupon-input input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  outline: none;
+  font-weight: 600;
+  background: white;
+}
+
+.coupon-input input:focus {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.08);
+}
+
+.coupon-input button {
+  border: none;
+  border-radius: 12px;
+  padding: 0 14px;
+  background: #111827;
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.coupon-input button:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
-.page-indicator {
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
+.btn-remove-coupon {
+  background: #6b7280 !important;
+}
+
+.coupon-success {
+  margin: 10px 0 0;
+  color: #16a34a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 22px 0;
+}
+
+.price-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 14px 0;
+  font-size: 15px;
+  color: #374151;
+}
+
+.discount-text {
+  color: #16a34a;
+}
+
+.total-row {
+  font-size: 20px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.total-row strong {
+  color: #dc2626;
+  font-size: 26px;
+}
+
+.btn-order {
+  width: 100%;
+  margin-top: 18px;
+  padding: 16px;
+  border: none;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+  font-size: 17px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: 0.25s;
+  box-shadow: 0 14px 25px rgba(220, 38, 38, 0.28);
+}
+
+.btn-order:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 32px rgba(220, 38, 38, 0.38);
+}
+
+.btn-order:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.policy-text {
+  margin-top: 14px;
+  font-size: 13px;
+  color: #6b7280;
+  text-align: center;
+  line-height: 1.5;
+}
+
+@media (max-width: 992px) {
+  .checkout-wrapper {
+    grid-template-columns: 1fr;
+  }
+
+  .order-summary {
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .checkout-page {
+    padding: 24px 14px;
+  }
+
+  .checkout-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .checkout-header h1 {
+    font-size: 30px;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card,
+  .order-summary {
+    padding: 20px;
+    border-radius: 20px;
+  }
+
+  .qr-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .qr-image {
+    width: 100%;
+    height: auto;
+  }
+
+  .product-box {
+    flex-direction: column;
+  }
+
+  .product-box img {
+    width: 100%;
+    height: 220px;
+  }
 }
 </style>

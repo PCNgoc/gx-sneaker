@@ -14,6 +14,8 @@ import AdminLoginView from '@/views/admin/AdminLoginView.vue'
 import AdminDashboardView from '@/views/admin/AdminDashboardView.vue'
 import StaffDashboardView from '@/views/admin/StaffDashboardView.vue'
 import AdminLayout from '@/layouts/AdminLayout.vue'
+import NhanVienView from '@/views/admin/NhanVienView.vue'
+import OrderSuccessView from "@/views/user/OrderSuccessView.vue"
 // Danh mục sản phẩm
 import ThuongHieuView from '../views/ThuongHieuView.vue'
 import DanhMucView from '@/views/DanhMucView.vue'
@@ -34,12 +36,16 @@ import HoaDonView from '@/views/admin/HoaDonView.vue'
 import Dashboard from "@/views/admin/Dashboard.vue";
 // Giao diện nút mua ngay
 import CheckoutView from '@/views/user/CheckoutView.vue'
+// Order
+import OrderView from "@/views/user/OrderView.vue"
+import OrderDetailView from "@/views/user/OrderDetailView.vue"
+//
+
 
 // Hải's Khách Hàng, Phiếu Giảm Giá & Giỏ Hàng
 import KhachHangView from '@/views/admin/KhachHangView.vue'
 import PhieuGiamGiaView from '@/views/admin/PhieuGiamGiaView.vue'
 import GioHangView from '@/views/user/GioHangView.vue'
-import ContactView from '@/views/user/ContactView.vue'
 
 
 const router = createRouter({
@@ -82,6 +88,13 @@ const router = createRouter({
       name: 'change-password',
       component: ChangePasswordView,
     },
+    {
+      path: "/order-success/:id",
+      name: "OrderSuccess",
+      component: OrderSuccessView,
+    },
+    //Đặt hàng
+
 
     // Danh mục
     {
@@ -91,6 +104,11 @@ const router = createRouter({
         {
           path: 'dashboard',
           component: AdminDashboardView,
+        },
+        {
+          path: 'nhan-vien',
+          name: 'AdminNhanVien',
+          component: NhanVienView,
         },
         {
           path: 'san-pham',
@@ -177,15 +195,16 @@ const router = createRouter({
       component: CheckoutView
     },
     {
-      path: '/contact',
-      name: 'contact',
-      component: ContactView
+      path:"/orders",
+      component:OrderView
     },
-    {
-      path: '/lien-he',
-      name: 'lien-he',
-      component: ContactView
-    },
+
+
+{
+  path: "/orders/:id",
+    name: "OrderDetail",
+  component: OrderDetailView
+},
 
 
     // Admin

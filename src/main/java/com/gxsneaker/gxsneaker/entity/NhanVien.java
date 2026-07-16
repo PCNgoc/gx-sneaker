@@ -3,6 +3,8 @@ package com.gxsneaker.gxsneaker.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "nhan_vien")
 @Getter
@@ -34,6 +36,21 @@ public class NhanVien {
     @Column(name = "so_dien_thoai")
     private String soDienThoai;
 
+    @Column(name = "gioi_tinh")
+    private Boolean gioiTinh;
+
+    @Column(name = "dia_chi")
+    private String diaChi;
+
+    @Column(name = "anh_dai_dien")
+    private String anhDaiDien;
+
     @Column(name = "trang_thai")
     private Boolean trangThai;
+
+    @Column(name = "ngay_tao")
+    private LocalDateTime ngayTao;
+
+    @Column(name = "ngay_cap_nhat")
+    private LocalDateTime ngayCapNhat;
 }

@@ -1,26 +1,24 @@
 package com.gxsneaker.gxsneaker.controller;
 
-import com.gxsneaker.gxsneaker.dto.TopSanPhamBanChayDTO;
-import com.gxsneaker.gxsneaker.dto.UpdateTrangThaiRequest;
+import com.gxsneaker.gxsneaker.dto.*;
 import com.gxsneaker.gxsneaker.entity.HoaDon;
 import com.gxsneaker.gxsneaker.entity.LichSuTrangThaiHoaDon;
+import com.gxsneaker.gxsneaker.entity.PhieuGiamGia;
 import com.gxsneaker.gxsneaker.repository.HoaDonRepository;
 import com.gxsneaker.gxsneaker.repository.LichSuTrangThaiHoaDonRepository;
+import com.gxsneaker.gxsneaker.repository.PhieuGiamGiaRepository;
 import com.gxsneaker.gxsneaker.service.HoaDonService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.web.bind.annotation.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
-import java.util.Optional;
-
-import org.springframework.http.ResponseEntity;
-
 import java.util.Date;
 import java.util.List;
-import com.gxsneaker.gxsneaker.dto.ThongKeDashboardResponse;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/hoa-don")
@@ -28,9 +26,14 @@ import com.gxsneaker.gxsneaker.dto.ThongKeDashboardResponse;
 public class HoaDonController {
 
     @Autowired
+    private PhieuGiamGiaRepository phieuGiamGiaRepository;
+
+    @Autowired
     private HoaDonRepository repository;
+
     @Autowired
     private LichSuTrangThaiHoaDonRepository lichSuRepository;
+
     @Autowired
     private HoaDonService hoaDonService;
 
@@ -40,8 +43,8 @@ public class HoaDonController {
     }
 
     @GetMapping("/{id}")
-    public HoaDon getById(@PathVariable Long id) {
-        return repository.findById(id).orElse(null);
+    public OrderResponseDTO getById(@PathVariable Long id) {
+        return hoaDonService.getOrderById(id);
     }
 
     @PostMapping
@@ -50,9 +53,10 @@ public class HoaDonController {
     }
 
     @PutMapping("/{id}")
-    public HoaDon update(@PathVariable Long id,
-                         @RequestBody HoaDon hoaDon) {
-
+    public HoaDon update(
+            @PathVariable Long id,
+            @RequestBody HoaDon hoaDon
+    ) {
         hoaDon.setId(id);
         return repository.save(hoaDon);
     }
@@ -62,16 +66,13 @@ public class HoaDonController {
         repository.deleteById(id);
     }
 
-    //Chức năng tìm kiếm theo maHoaDon, trang thái
     @GetMapping("/search")
     public List<HoaDon> search(
             @RequestParam(required = false) String maHoaDon,
             @RequestParam(required = false) String trangThai
     ) {
-
         if ((maHoaDon == null || maHoaDon.isBlank())
                 && (trangThai == null || trangThai.isBlank())) {
-
             return repository.findAll();
         }
 
@@ -89,14 +90,6 @@ public class HoaDonController {
         );
     }
 
-    // ==========================================
-// CHỨC NĂNG: PHÂN TRANG DANH SÁCH HÓA ĐƠN
-// API: GET /api/hoa-don/page
-// MÔ TẢ:
-// - Hiển thị danh sách hóa đơn theo trang
-// - page bắt đầu từ 0
-// - size là số bản ghi trên mỗi trang
-// ==========================================
     @GetMapping("/page")
     public Page<HoaDon> getPage(
             @RequestParam(defaultValue = "0") int page,
@@ -105,16 +98,6 @@ public class HoaDonController {
         return repository.findAll(PageRequest.of(page, size));
     }
 
-    // ==========================================
-// CHỨC NĂNG: LỌC HÓA ĐƠN THEO NGÀY
-// API:
-// GET /api/hoa-don/filter-date
-// Ví dụ:
-// /api/hoa-don/filter-date?from=2025-01-01&to=2025-12-31
-// NGHIỆP VỤ:
-// Hiển thị các hóa đơn được tạo trong
-// khoảng thời gian người dùng lựa chọn
-// ==========================================
     @GetMapping("/filter-date")
     public List<HoaDon> filterDate(
             @RequestParam
@@ -125,34 +108,15 @@ public class HoaDonController {
             @DateTimeFormat(pattern = "yyyy-MM-dd")
             Date to
     ) {
-
-        return repository.findByNgayDatHangBetween(
-                from,
-                to
-        );
+        return repository.findByNgayDatHangBetween(from, to);
     }
-
-
-    // ==========================================
-// CHỨC NĂNG: CẬP NHẬT TRẠNG THÁI HÓA ĐƠN
-// API: PUT /api/hoa-don/{id}/status
-//
-// MÔ TẢ:
-// 1. Tìm hóa đơn theo ID
-// 2. Kiểm tra hóa đơn tồn tại
-// 3. Kiểm tra trạng thái mới khác trạng thái hiện tại
-// 4. Cập nhật trạng thái mới
-// 5. Lưu lịch sử thay đổi trạng thái
-// ==========================================
 
     @PutMapping("/{id}/status")
     public ResponseEntity<?> updateStatus(
             @PathVariable Long id,
             @RequestBody UpdateTrangThaiRequest request
     ) {
-
-        Optional<HoaDon> optionalHoaDon =
-                repository.findById(id);
+        Optional<HoaDon> optionalHoaDon = repository.findById(id);
 
         if (optionalHoaDon.isEmpty()) {
             return ResponseEntity
@@ -164,153 +128,91 @@ public class HoaDonController {
 
         String trangThaiCu = hoaDon.getTrangThai();
 
-        // Kiểm tra trạng thái mới trùng trạng thái cũ
-        if (trangThaiCu.equalsIgnoreCase(
-                request.getTrangThaiMoi()
-        )) {
-
+        if (trangThaiCu.equalsIgnoreCase(request.getTrangThaiMoi())) {
             return ResponseEntity
                     .badRequest()
                     .body("Trạng thái mới phải khác trạng thái hiện tại");
         }
 
-        // Cập nhật trạng thái hóa đơn
-        hoaDon.setTrangThai(
-                request.getTrangThaiMoi()
-        );
+        hoaDon.setTrangThai(request.getTrangThaiMoi());
 
         repository.save(hoaDon);
 
-        // Lưu lịch sử thay đổi trạng thái
-        LichSuTrangThaiHoaDon lichSu =
-                new LichSuTrangThaiHoaDon();
+        LichSuTrangThaiHoaDon lichSu = new LichSuTrangThaiHoaDon();
 
         lichSu.setIdHoaDon(id);
-
         lichSu.setTrangThaiCu(trangThaiCu);
-
-        lichSu.setTrangThaiMoi(
-                request.getTrangThaiMoi()
-        );
-
-        lichSu.setNguoiThucHien(
-                request.getNguoiThucHien()
-        );
-
+        lichSu.setTrangThaiMoi(request.getTrangThaiMoi());
+        lichSu.setNguoiThucHien(request.getNguoiThucHien());
         lichSu.setThoiGian(new Date());
-
-        lichSu.setGhiChu(
-                request.getGhiChu()
-        );
+        lichSu.setGhiChu(request.getGhiChu());
 
         lichSuRepository.save(lichSu);
 
-        return ResponseEntity.ok(
-                "Cập nhật trạng thái thành công"
-        );
+        return ResponseEntity.ok("Cập nhật trạng thái thành công");
     }
 
-    // ==========================================
-// CHỨC NĂNG: XEM LỊCH SỬ TRẠNG THÁI
-// API:
-// GET /api/hoa-don/{id}/history
-//
-// MÔ TẢ:
-// Lấy toàn bộ lịch sử thay đổi trạng thái
-// của một hóa đơn
-// ==========================================
     @GetMapping("/{id}/history")
     public List<LichSuTrangThaiHoaDon> getHistory(
             @PathVariable Long id
     ) {
-
-        return lichSuRepository
-                .findByIdHoaDonOrderByThoiGianAsc(id);
+        return lichSuRepository.findByIdHoaDonOrderByThoiGianAsc(id);
     }
 
-
-    // =====================================================
-// THỐNG KÊ TỔNG DOANH THU
-// =====================================================
     @GetMapping("/thong-ke/tong-doanh-thu")
     public ResponseEntity<BigDecimal> getTongDoanhThu() {
-
-        return ResponseEntity.ok(
-                repository.getTongDoanhThu()
-        );
+        return ResponseEntity.ok(repository.getTongDoanhThu());
     }
 
-    // =====================================================
-// THỐNG KÊ DOANH THU THEO THÁNG
-// =====================================================
     @GetMapping("/thong-ke/doanh-thu-thang")
     public ResponseEntity<BigDecimal> getDoanhThuTheoThang(
             @RequestParam int month,
-            @RequestParam int year) {
-
+            @RequestParam int year
+    ) {
         return ResponseEntity.ok(
                 repository.getDoanhThuTheoThang(month, year)
         );
     }
 
-    // =====================================================
-// THỐNG KÊ DOANH THU THEO NĂM
-// =====================================================
     @GetMapping("/thong-ke/doanh-thu-nam")
     public ResponseEntity<BigDecimal> getDoanhThuTheoNam(
-            @RequestParam int year) {
-
+            @RequestParam int year
+    ) {
         return ResponseEntity.ok(
                 repository.getDoanhThuTheoNam(year)
         );
     }
 
-    // =====================================================
-// THỐNG KÊ DOANH THU THEO NGÀY
-// =====================================================
     @GetMapping("/thong-ke/doanh-thu-ngay")
     public ResponseEntity<BigDecimal> getDoanhThuTheoNgay(
             @RequestParam
             @DateTimeFormat(pattern = "yyyy-MM-dd")
-            Date ngay) {
-
+            Date ngay
+    ) {
         return ResponseEntity.ok(
                 repository.getDoanhThuTheoNgay(ngay)
         );
     }
 
-    // =====================================================
-// THỐNG KÊ TỔNG SỐ ĐƠN HÀNG
-// =====================================================
     @GetMapping("/thong-ke/tong-so-don")
     public ResponseEntity<Long> getTongSoDon() {
-
         return ResponseEntity.ok(
                 repository.getTongSoDon()
         );
     }
 
-    // =====================================================
-// THỐNG KÊ SỐ ĐƠN THEO TRẠNG THÁI
-// =====================================================
     @GetMapping("/thong-ke/so-don-theo-trang-thai")
     public ResponseEntity<Long> getSoDonTheoTrangThai(
-            @RequestParam String trangThai) {
-
+            @RequestParam String trangThai
+    ) {
         return ResponseEntity.ok(
                 repository.getSoDonTheoTrangThai(trangThai)
         );
     }
 
-
-    // =====================================================
-// DASHBOARD THỐNG KÊ TỔNG QUAN
-// =====================================================
     @GetMapping("/thong-ke/dashboard")
     public ResponseEntity<ThongKeDashboardResponse> getDashboard() {
-
-        ThongKeDashboardResponse response =
-                new ThongKeDashboardResponse();
+        ThongKeDashboardResponse response = new ThongKeDashboardResponse();
 
         response.setTongSoDon(
                 repository.getTongSoDon()
@@ -321,44 +223,30 @@ public class HoaDonController {
         );
 
         response.setSoDonChoXacNhan(
-                repository.getSoDonTheoTrangThai(
-                        "CHO_XAC_NHAN"
-                )
+                repository.getSoDonTheoTrangThai("CHO_XAC_NHAN")
         );
 
         response.setSoDonDaXacNhan(
-                repository.getSoDonTheoTrangThai(
-                        "DA_XAC_NHAN"
-                )
+                repository.getSoDonTheoTrangThai("DA_XAC_NHAN")
         );
 
         response.setSoDonDangGiao(
-                repository.getSoDonTheoTrangThai(
-                        "DANG_GIAO"
-                )
+                repository.getSoDonTheoTrangThai("DANG_GIAO")
         );
 
         response.setSoDonHoanThanh(
-                repository.getSoDonTheoTrangThai(
-                        "HOAN_THANH"
-                )
+                repository.getSoDonTheoTrangThai("HOAN_THANH")
         );
 
         response.setSoDonDaHuy(
-                repository.getSoDonTheoTrangThai(
-                        "DA_HUY"
-                )
+                repository.getSoDonTheoTrangThai("DA_HUY")
         );
 
         return ResponseEntity.ok(response);
     }
 
-    // =====================================================
-// THỐNG KÊ DOANH THU THEO KHOẢNG THỜI GIAN
-// =====================================================
     @GetMapping("/thong-ke/doanh-thu-khoang-thoi-gian")
     public ResponseEntity<BigDecimal> getDoanhThuTheoKhoangThoiGian(
-
             @RequestParam
             @DateTimeFormat(pattern = "yyyy-MM-dd")
             Date tuNgay,
@@ -367,7 +255,6 @@ public class HoaDonController {
             @DateTimeFormat(pattern = "yyyy-MM-dd")
             Date denNgay
     ) {
-
         return ResponseEntity.ok(
                 repository.getDoanhThuTheoKhoangThoiGian(
                         tuNgay,
@@ -376,50 +263,142 @@ public class HoaDonController {
         );
     }
 
-
-    // =====================================================
-// THỐNG KÊ BIỂU Ò THEO THÁNG
-// =====================================================
     @GetMapping("/thong-ke/bieu-do-doanh-thu-thang")
-    public ResponseEntity<?> getDoanhThuTheoThang(
-            @RequestParam int year) {
-
+    public ResponseEntity<?> getBieuDoDoanhThuTheoThang(
+            @RequestParam int year
+    ) {
         return ResponseEntity.ok(
                 hoaDonService.getDoanhThuTheoThang(year)
         );
     }
 
-    // =====================================================
-// BIỂU ĐỒ DOANH THU THEO THÁNG
-// =====================================================
-//    @GetMapping("/thong-ke/bieu-do-doanh-thu-thang")
-//    public ResponseEntity<?> getBieuDoDoanhThuTheoThang(
-//            @RequestParam int year
-//    ) {
-//
-//        return ResponseEntity.ok(
-//                hoaDonService.getDoanhThuTheoThang(year)
-//        );
-//    }
-
     @GetMapping("/thong-ke/trang-thai-don-hang")
     public ResponseEntity<?> getThongKeTrangThaiDonHang(
             @RequestParam int year
     ) {
-
         return ResponseEntity.ok(
                 hoaDonService.getThongKeTrangThaiDonHang(year)
         );
     }
 
-    @GetMapping("/top-5-san-pham")
-    public ResponseEntity<List<TopSanPhamBanChayDTO>>
-    getTop5SanPham(@RequestParam Integer year) {
-
+    @GetMapping("/thong-ke/top-5-san-pham-ban-chay")
+    public ResponseEntity<?> getTop5SanPhamBanChay(
+            @RequestParam int year
+    ) {
         return ResponseEntity.ok(
                 hoaDonService.getTop5SanPhamBanChay(year)
         );
     }
 
+    @PostMapping("/dat-hang")
+    public ResponseEntity<HoaDon> datHang(
+            @RequestBody DatHangRequestDTO request
+    ) {
+        HoaDon hoaDon = hoaDonService.datHang(request);
 
+        return ResponseEntity.ok(hoaDon);
+    }
+
+    @GetMapping("/khach-hang/{id}")
+    public ResponseEntity<List<OrderResponseDTO>> getByKhachHang(
+            @PathVariable Long id
+    ) {
+        return ResponseEntity.ok(
+                hoaDonService.getOrdersByCustomer(id)
+        );
+    }
+
+    @PostMapping("/ap-dung-ma-giam-gia")
+    public ResponseEntity<?> apDungMaGiamGia(
+            @RequestBody ApDungMaGiamGiaRequest request
+    ) {
+        try {
+            if (request.getMaPhieuGiamGia() == null
+                    || request.getMaPhieuGiamGia().trim().isEmpty()) {
+                throw new RuntimeException("Vui lòng nhập mã giảm giá");
+            }
+
+            if (request.getTongTienHang() == null
+                    || request.getTongTienHang().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new RuntimeException("Tổng tiền hàng không hợp lệ");
+            }
+
+            PhieuGiamGia phieu = phieuGiamGiaRepository
+                    .findByMaPhieuIgnoreCase(request.getMaPhieuGiamGia().trim())
+                    .orElseThrow(() -> new RuntimeException("Mã giảm giá không tồn tại"));
+
+            if (phieu.getTrangThai() == null || !phieu.getTrangThai()) {
+                throw new RuntimeException("Mã giảm giá không hoạt động");
+            }
+
+            Date now = new Date();
+
+            if (phieu.getNgayBatDau() != null && now.before(phieu.getNgayBatDau())) {
+                throw new RuntimeException("Mã giảm giá chưa đến thời gian sử dụng");
+            }
+
+            if (phieu.getNgayKetThuc() != null && now.after(phieu.getNgayKetThuc())) {
+                throw new RuntimeException("Mã giảm giá đã hết hạn");
+            }
+
+            if (phieu.getSoLuong() != null && phieu.getSoLuong() <= 0) {
+                throw new RuntimeException("Mã giảm giá đã hết lượt sử dụng");
+            }
+
+            if (phieu.getGiaTriGiam() == null) {
+                throw new RuntimeException("Giá trị giảm không hợp lệ");
+            }
+
+            BigDecimal tongTienHang = request.getTongTienHang();
+
+            BigDecimal dieuKien = phieu.getGiaTriDonHangToiThieu() == null
+                    ? BigDecimal.ZERO
+                    : phieu.getGiaTriDonHangToiThieu();
+
+            if (tongTienHang.compareTo(dieuKien) < 0) {
+                throw new RuntimeException(
+                        "Đơn hàng chưa đạt giá trị tối thiểu để dùng mã này"
+                );
+            }
+
+            BigDecimal soTienGiam;
+
+            if (Boolean.TRUE.equals(phieu.getLoaiGiamGia())) {
+                soTienGiam = tongTienHang
+                        .multiply(phieu.getGiaTriGiam())
+                        .divide(BigDecimal.valueOf(100));
+            } else {
+                soTienGiam = phieu.getGiaTriGiam();
+            }
+
+            if (phieu.getGiaTriGiamToiDa() != null
+                    && soTienGiam.compareTo(phieu.getGiaTriGiamToiDa()) > 0) {
+                soTienGiam = phieu.getGiaTriGiamToiDa();
+            }
+
+            if (soTienGiam.compareTo(tongTienHang) > 0) {
+                soTienGiam = tongTienHang;
+            }
+
+            if (soTienGiam.compareTo(BigDecimal.ZERO) < 0) {
+                soTienGiam = BigDecimal.ZERO;
+            }
+
+            BigDecimal tongTienSauGiam = tongTienHang.subtract(soTienGiam);
+
+            return ResponseEntity.ok(
+                    new ApDungMaGiamGiaResponse(
+                            phieu.getId().longValue(),
+                            phieu.getMaPhieu(),
+                            phieu.getTenPhieu(),
+                            soTienGiam,
+                            tongTienSauGiam,
+                            "Áp dụng mã giảm giá thành công"
+                    )
+            );
+
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 }

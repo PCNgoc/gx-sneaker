@@ -16,7 +16,7 @@ public interface HoaDonRepository extends JpaRepository<HoaDon, Long> {
     List<HoaDon> findByMaHoaDonContaining(String maHoaDon);
 
     List<HoaDon> findByTrangThai(String trangThai);
-
+    List<HoaDon> findByIdKhachHang(Long idKhachHang);
     List<HoaDon> findByMaHoaDonContainingAndTrangThai(
             String maHoaDon,
             String trangThai
@@ -204,4 +204,9 @@ ORDER BY SUM(hdct.so_luong) DESC
     List<Object[]> getTop5SanPhamBanChay(
             @Param("year") Integer year
     );
+
+
+    //Đơn hàng
+    @Query("SELECT COUNT(h) FROM HoaDon h")
+    Long countHoaDon();
 }

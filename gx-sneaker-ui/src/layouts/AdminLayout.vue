@@ -37,6 +37,10 @@ const logout = () => {
           🏠 Dashboard
         </router-link>
 
+        <router-link to="/admin/nhan-vien">
+          👨‍💼 Nhân viên
+        </router-link>
+
       </div>
 
       <div class="menu-group">

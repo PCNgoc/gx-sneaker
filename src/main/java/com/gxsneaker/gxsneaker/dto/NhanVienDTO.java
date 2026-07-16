@@ -9,9 +9,13 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AdminLoginResponse {
+public class NhanVienDTO {
 
     private Integer id;
+
+    private Integer idPhanQuyen;
+
+    private String tenQuyen;
 
     private String maNhanVien;
 
@@ -19,12 +23,16 @@ public class AdminLoginResponse {
 
     private String email;
 
-    private String role;
+    private String matKhau;
 
-    private String token;
+    private String soDienThoai;
 
-    private String avatar;
+    private Boolean gioiTinh;
 
-    private String message;
+    private String diaChi;
+
+    private String anhDaiDien;
+
+    private Boolean trangThai;
 
 }
